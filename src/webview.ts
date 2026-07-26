@@ -152,6 +152,9 @@ function buildEmbeddedScriptReport(scriptReportPath: string): string | null {
 
   let html = fs.readFileSync(htmlPath, 'utf-8');
 
+  // Force dark theme on the embedded report
+  html = html.replace('data-theme="light"', 'data-theme="dark"');
+
   // Inline CSS: replace <link rel="stylesheet" href="css/styles.css" /> with <style>...</style>
   if (fs.existsSync(cssPath)) {
     const css = fs.readFileSync(cssPath, 'utf-8');
@@ -169,6 +172,9 @@ function buildEmbeddedScriptReport(scriptReportPath: string): string | null {
       `<script>${js}</script>`
     );
   }
+
+  // Remove the theme toggle button (since we force dark)
+  html = html.replace(/<button[^>]*id=["']themeToggle["'][^>]*>[\s\S]*?<\/button>/i, '');
 
   return html;
 }
@@ -211,9 +217,12 @@ function buildHtml(
     let errorLine = '';
     if (step.status === 'failed' && step.errors && step.errors.length > 0) {
       const firstErr = step.errors[0];
-      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(firstErr.message)}</div>`;
+      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(firstErr.message.split('\n')[0].substring(0, 120))}</div>`;
     } else if (step.status === 'failed' && step.message) {
-      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(step.message)}</div>`;
+      // Only show first meaningful line, not entire Maven trace
+      const lines = step.message.split('\n').filter(l => l.trim().length > 0);
+      const summary = lines[0]?.substring(0, 120) || 'Step failed';
+      errorLine = `<div class="step-error-line">     └─ ${escapeHtml(summary)}</div>`;
     }
 
     return `<div class="step-row">
@@ -447,10 +456,10 @@ function buildHtml(
     .icon-failed { color: #ff4455; }
     .icon-skipped { color: #666680; }
 
-    .step-num { color: #666680; }
-    .step-name { color: #e0e0e0; }
-    .step-dots { color: #333348; }
-    .step-duration { color: #666680; }
+    .step-num { color: #888; font-weight: 600; }
+    .step-name { color: #ffffff; font-weight: 500; }
+    .step-dots { color: #2a2a3e; }
+    .step-duration { color: #00d4ff; font-weight: 500; }
 
     .step-error-line {
       color: #ff4455;
@@ -519,10 +528,17 @@ function buildHtml(
       width: 100%;
       min-height: 400px;
       font-family: sans-serif;
+      color-scheme: dark;
     }
 
     .script-report-frame * {
       all: revert;
+    }
+
+    /* Force dark theme on the embedded script-report */
+    .script-report-frame [data-theme],
+    .script-report-frame html {
+      color-scheme: dark !important;
     }
 
     .no-report {
