@@ -1,11 +1,16 @@
 import * as vscode from 'vscode';
-import { resolveBinary, downloadBinary } from './binary';
+import * as fs from 'fs';
+import * as path from 'path';
+import { resolveBinary } from './binary';
 import { runValidator } from './runner';
 import { applyDiagnostics, clearDiagnostics } from './diagnostics';
+import { showValidationReport } from './webview';
+import { HistoryProvider, HistoryItem } from './history';
 
 let statusBarItem: vscode.StatusBarItem;
 let outputChannel: vscode.OutputChannel;
 let diagnosticCollection: vscode.DiagnosticCollection;
+let historyProvider: HistoryProvider;
 
 export function activate(context: vscode.ExtensionContext): void {
   // Create output channel for detailed logs
@@ -16,7 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
   diagnosticCollection = vscode.languages.createDiagnosticCollection('dbflow-validator');
   context.subscriptions.push(diagnosticCollection);
 
-  // Create status bar item
+  // Create status bar item — single button to run validation
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
   statusBarItem.text = '$(database) DBFlow: Validate';
   statusBarItem.tooltip = 'Run DBFlow Validator on current workspace';
@@ -24,15 +29,41 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
+  // Register history tree view provider
+  historyProvider = new HistoryProvider(context);
+  const treeView = vscode.window.createTreeView('dbflow-validator-history', {
+    treeDataProvider: historyProvider,
+    showCollapseAll: false,
+  });
+  context.subscriptions.push(treeView);
+
+  // Update tree view description with summary
+  treeView.description = historyProvider.getSummary();
+
   // Register validate command
   const validateCommand = vscode.commands.registerCommand('dbflow-validator.validate', async () => {
     await executeValidation(context);
+    treeView.description = historyProvider.getSummary();
   });
   context.subscriptions.push(validateCommand);
+
+  // Register command to open a history item
+  const openHistoryCommand = vscode.commands.registerCommand(
+    'dbflow-validator.openHistoryItem',
+    (item: HistoryItem) => {
+      historyProvider.openItem(item);
+    }
+  );
+  context.subscriptions.push(openHistoryCommand);
 
   outputChannel.appendLine('DBFlow Validator extension activated.');
 }
 
+/**
+ * Executes the full validation pipeline autonomously.
+ * No user interaction required — binary is resolved/downloaded silently,
+ * validation runs, and results are displayed automatically.
+ */
 async function executeValidation(context: vscode.ExtensionContext): Promise<void> {
   // Get workspace folder
   const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -42,46 +73,43 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
   }
   const workspaceFolder = workspaceFolders[0].uri.fsPath;
 
-  // Update status bar
+  // Update status bar to show we're working
   statusBarItem.text = '$(sync~spin) DBFlow: Validating...';
 
   outputChannel.appendLine(`\n--- Validation started at ${new Date().toISOString()} ---`);
   outputChannel.appendLine(`Workspace: ${workspaceFolder}`);
 
   try {
-    // 1. Resolve binary
-    let binaryPath = await resolveBinary(context);
-
-    if (!binaryPath) {
-      const choice = await vscode.window.showInformationMessage(
-        'dbflow-validator binary not found. Download it from GitHub Releases?',
-        'Download',
-        'Cancel'
-      );
-
-      if (choice !== 'Download') {
-        statusBarItem.text = '$(database) DBFlow: Validate';
-        return;
-      }
-
-      binaryPath = await downloadBinary(context);
-      outputChannel.appendLine(`Binary downloaded to: ${binaryPath}`);
-    }
-
+    // 1. Resolve binary — downloads silently if not found (zero interaction)
+    const binaryPath = await resolveBinary(context, outputChannel);
     outputChannel.appendLine(`Using binary: ${binaryPath}`);
 
-    // 2. Run validation
+    // 2. Run validation — fully automatic
     const runResult = await runValidator(binaryPath, workspaceFolder);
 
-    // 3. Handle result
+    // 3. Determine script-report path
+    let scriptReportPath: string | undefined;
+    if (runResult.runDir) {
+      const candidatePath = path.join(runResult.runDir, 'script-report');
+      if (fs.existsSync(candidatePath)) {
+        scriptReportPath = candidatePath;
+      }
+    }
+
+    // 4. Display results — no questions, just show what happened
     switch (runResult.kind) {
       case 'passed':
         clearDiagnostics(diagnosticCollection);
         statusBarItem.text = '$(check) DBFlow: Passed';
         vscode.window.showInformationMessage(
-          `DBFlow Validator: All checks passed! (${runResult.result?.duration_ms}ms)`
+          `✅ DBFlow Validator: All checks passed! (${runResult.result?.duration_ms}ms)`
         );
         outputChannel.appendLine(`Result: PASSED - ${runResult.result?.summary}`);
+
+        // Open WebView with results
+        if (runResult.result) {
+          showValidationReport(context, runResult.result, scriptReportPath);
+        }
         break;
 
       case 'failed':
@@ -96,15 +124,21 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
 
           statusBarItem.text = `$(error) DBFlow: ${errorCount} errors, ${warnCount} warnings`;
           vscode.window.showWarningMessage(
-            `DBFlow Validator: ${runResult.result.summary}`
+            `❌ DBFlow Validator: ${runResult.result.summary}`
           );
           outputChannel.appendLine(`Result: FAILED - ${runResult.result.summary}`);
+
+          // Open WebView with results
+          showValidationReport(context, runResult.result, scriptReportPath);
+
+          // Automatically show the output channel so the dev sees the details
+          outputChannel.show(true);
         }
         break;
 
       case 'cancelled':
         statusBarItem.text = '$(database) DBFlow: Validate';
-        outputChannel.appendLine('Result: Cancelled by user.');
+        outputChannel.appendLine('Result: Cancelled.');
         break;
 
       case 'error':
@@ -113,16 +147,21 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
           `DBFlow Validator error: ${runResult.errorMessage}`
         );
         outputChannel.appendLine(`Error: ${runResult.errorMessage}`);
+        outputChannel.show(true);
         break;
     }
+
+    // 5. Refresh history after execution
+    historyProvider.refresh();
   } catch (err) {
     statusBarItem.text = '$(warning) DBFlow: Error';
     const message = err instanceof Error ? err.message : String(err);
     vscode.window.showErrorMessage(`DBFlow Validator: ${message}`);
     outputChannel.appendLine(`Unexpected error: ${message}`);
+    outputChannel.show(true);
   }
 
-  // Reset status bar after 10 seconds for non-idle states
+  // Reset status bar after 10 seconds
   setTimeout(() => {
     if (statusBarItem.text !== '$(database) DBFlow: Validate') {
       statusBarItem.text = '$(database) DBFlow: Validate';

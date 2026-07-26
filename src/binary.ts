@@ -14,28 +14,42 @@ const BINARY_NAME = 'dbflow-validator';
  *  1. User-configured path in settings
  *  2. Binary found in system PATH
  *  3. Binary previously downloaded to globalStoragePath
+ *  4. AUTO-DOWNLOAD: silently downloads from GitHub Releases (no prompt)
+ *
+ * This function NEVER asks the user anything. If the binary is missing,
+ * it downloads it automatically and silently.
  */
-export async function resolveBinary(context: vscode.ExtensionContext): Promise<string | undefined> {
+export async function resolveBinary(
+  context: vscode.ExtensionContext,
+  outputChannel: vscode.OutputChannel
+): Promise<string> {
   // 1. Check user setting
   const config = vscode.workspace.getConfiguration('dbflowValidator');
   const configuredPath = config.get<string>('binaryPath');
   if (configuredPath && fs.existsSync(configuredPath)) {
+    outputChannel.appendLine(`Binary: using configured path ${configuredPath}`);
     return configuredPath;
   }
 
   // 2. Check PATH
   const pathBinary = findInPath();
   if (pathBinary) {
+    outputChannel.appendLine(`Binary: found in PATH at ${pathBinary}`);
     return pathBinary;
   }
 
-  // 3. Check globalStoragePath
+  // 3. Check globalStoragePath (previously downloaded)
   const storedBinary = getStoredBinaryPath(context);
   if (fs.existsSync(storedBinary)) {
+    outputChannel.appendLine(`Binary: using cached download at ${storedBinary}`);
     return storedBinary;
   }
 
-  return undefined;
+  // 4. Auto-download silently — no questions asked
+  outputChannel.appendLine(`Binary: not found, downloading ${CLI_VERSION} from GitHub Releases...`);
+  const downloaded = await downloadBinary(context, outputChannel);
+  outputChannel.appendLine(`Binary: downloaded to ${downloaded}`);
+  return downloaded;
 }
 
 /**
@@ -49,7 +63,7 @@ function findInPath(): string | undefined {
       return result.split('\n')[0];
     }
   } catch {
-    // Binary not found in PATH
+    // Binary not found in PATH — this is expected, not an error
   }
   return undefined;
 }
@@ -102,8 +116,12 @@ function detectPlatformAsset(): string {
 
 /**
  * Downloads the CLI binary from GitHub Releases and stores it in globalStoragePath.
+ * Runs silently with a progress notification (no user interaction required).
  */
-export async function downloadBinary(context: vscode.ExtensionContext): Promise<string> {
+async function downloadBinary(
+  context: vscode.ExtensionContext,
+  outputChannel: vscode.OutputChannel
+): Promise<string> {
   const assetName = detectPlatformAsset();
   const url = `https://github.com/${GITHUB_REPO}/releases/download/${CLI_VERSION}/${assetName}`;
 
@@ -117,11 +135,14 @@ export async function downloadBinary(context: vscode.ExtensionContext): Promise<
   await vscode.window.withProgress(
     {
       location: vscode.ProgressLocation.Notification,
-      title: `Downloading dbflow-validator ${CLI_VERSION}...`,
+      title: `DBFlow Validator: installing CLI ${CLI_VERSION}...`,
       cancellable: false,
     },
-    async () => {
+    async (progress) => {
+      progress.report({ message: `Downloading ${assetName}...` });
+      outputChannel.appendLine(`Downloading: ${url}`);
       await downloadFile(url, destPath);
+      progress.report({ message: 'Done!' });
     }
   );
 
@@ -138,56 +159,38 @@ export async function downloadBinary(context: vscode.ExtensionContext): Promise<
  */
 function downloadFile(url: string, dest: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(dest);
-    const request = (targetUrl: string) => {
+    const request = (targetUrl: string, redirectCount: number) => {
+      if (redirectCount > 5) {
+        reject(new Error('Too many redirects'));
+        return;
+      }
+
       https.get(targetUrl, { headers: { 'User-Agent': 'dbflow-validator-vscode' } }, (response) => {
-        // Follow redirects (301, 302)
-        if (response.statusCode && [301, 302].includes(response.statusCode) && response.headers.location) {
-          file.close();
-          fs.unlinkSync(dest);
-          const newFile = fs.createWriteStream(dest);
-          downloadToStream(response.headers.location, newFile).then(resolve).catch(reject);
+        // Follow redirects (301, 302, 307)
+        if (response.statusCode && [301, 302, 307].includes(response.statusCode) && response.headers.location) {
+          request(response.headers.location, redirectCount + 1);
           return;
         }
 
         if (response.statusCode !== 200) {
-          file.close();
-          fs.unlinkSync(dest);
           reject(new Error(`Download failed with status ${response.statusCode}`));
           return;
         }
 
+        const file = fs.createWriteStream(dest);
         response.pipe(file);
         file.on('finish', () => {
           file.close();
           resolve();
         });
+        file.on('error', (err) => {
+          fs.unlinkSync(dest);
+          reject(err);
+        });
       }).on('error', (err) => {
-        file.close();
-        fs.unlinkSync(dest);
         reject(err);
       });
     };
-    request(url);
-  });
-}
-
-function downloadToStream(url: string, file: fs.WriteStream): Promise<void> {
-  return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'dbflow-validator-vscode' } }, (response) => {
-      if (response.statusCode !== 200) {
-        file.close();
-        reject(new Error(`Download failed with status ${response.statusCode}`));
-        return;
-      }
-      response.pipe(file);
-      file.on('finish', () => {
-        file.close();
-        resolve();
-      });
-    }).on('error', (err) => {
-      file.close();
-      reject(err);
-    });
+    request(url, 0);
   });
 }

@@ -1,4 +1,6 @@
 import { execFile } from 'child_process';
+import * as fs from 'fs';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { ValidationResult } from './types';
 
@@ -6,6 +8,7 @@ export interface RunResult {
   kind: 'passed' | 'failed' | 'error' | 'cancelled';
   result?: ValidationResult;
   errorMessage?: string;
+  runDir?: string;
 }
 
 /**
@@ -37,9 +40,11 @@ export function runValidator(binaryPath: string, workspaceFolder: string): Promi
         case 1: {
           try {
             const result: ValidationResult = JSON.parse(stdout);
+            const runDir = findLatestRunDir(workspaceFolder);
             resolve({
               kind: numericExit === 0 ? 'passed' : 'failed',
               result,
+              runDir,
             });
           } catch (parseError) {
             resolve({
@@ -62,6 +67,39 @@ export function runValidator(binaryPath: string, workspaceFolder: string): Promi
       }
     });
   });
+}
+
+/**
+ * Finds the most recently created run directory in dbflow-validator-runs/.
+ */
+function findLatestRunDir(workspaceFolder: string): string | undefined {
+  const runsDir = path.join(workspaceFolder, 'dbflow-validator-runs');
+  if (!fs.existsSync(runsDir)) {
+    return undefined;
+  }
+
+  try {
+    const entries = fs.readdirSync(runsDir);
+    let latestDir: string | undefined;
+    let latestTime = 0;
+
+    for (const entry of entries) {
+      const fullPath = path.join(runsDir, entry);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (stat.isDirectory() && stat.mtimeMs > latestTime) {
+          latestTime = stat.mtimeMs;
+          latestDir = fullPath;
+        }
+      } catch {
+        continue;
+      }
+    }
+
+    return latestDir;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

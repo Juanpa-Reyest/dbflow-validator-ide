@@ -12,16 +12,57 @@
     "Linters"
   ],
   "activationEvents": [
-    "onCommand:dbflow-validator.validate"
+    "onCommand:dbflow-validator.validate",
+    "onView:dbflow-validator-history"
   ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
       {
         "command": "dbflow-validator.validate",
-        "title": "DBFlow: Validate DB Changes"
+        "title": "DBFlow: Validate DB Changes",
+        "icon": "$(play)"
       }
     ],
+    "keybindings": [
+      {
+        "command": "dbflow-validator.validate",
+        "key": "ctrl+alt+v",
+        "mac": "cmd+alt+v"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "dbflow-validator-sidebar",
+          "title": "DBFlow Validator",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "dbflow-validator-sidebar": [
+        {
+          "id": "dbflow-validator-history",
+          "name": "Execution History"
+        }
+      ]
+    },
+    "menus": {
+      "editor/title": [
+        {
+          "command": "dbflow-validator.validate",
+          "group": "navigation"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "dbflow-validator.validate",
+          "when": "view == dbflow-validator-history",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "DBFlow Validator",
       "properties": {
