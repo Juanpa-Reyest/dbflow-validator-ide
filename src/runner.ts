@@ -14,6 +14,10 @@ export interface RunResult {
 /**
  * Executes the dbflow-validator CLI and parses its JSON output.
  *
+ * The CLI outputs both console text (banner, progress) AND JSON to stdout.
+ * We extract only the JSON block by finding the first '{' that starts a valid
+ * JSON object.
+ *
  * Exit codes:
  *  0   = PASSED
  *  1   = FAILED (validation errors found)
@@ -31,15 +35,15 @@ export function runValidator(binaryPath: string, workspaceFolder: string): Promi
 
   return new Promise<RunResult>((resolve) => {
     execFile(binaryPath, args, { cwd: workspaceFolder, maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
-      const exitCode = error ? (error as NodeJS.ErrnoException & { code?: number }).code : 0;
-      // execFile puts exit code in error.code as number or error.signal
-      const numericExit = typeof exitCode === 'number' ? exitCode : (error?.killed ? 130 : getExitCode(error));
+      const numericExit = getExitCode(error);
 
       switch (numericExit) {
         case 0:
         case 1: {
           try {
-            const result: ValidationResult = JSON.parse(stdout);
+            const jsonStr = extractJson(stdout);
+            const raw = JSON.parse(jsonStr);
+            const result = normalizeResult(raw);
             const runDir = findLatestRunDir(workspaceFolder);
             resolve({
               kind: numericExit === 0 ? 'passed' : 'failed',
@@ -49,7 +53,7 @@ export function runValidator(binaryPath: string, workspaceFolder: string): Promi
           } catch (parseError) {
             resolve({
               kind: 'error',
-              errorMessage: `Failed to parse CLI output: ${parseError}\n\nstdout: ${stdout}\nstderr: ${stderr}`,
+              errorMessage: `Failed to parse CLI output: ${parseError}\n\nstdout (last 500 chars): ${stdout.slice(-500)}\nstderr: ${stderr}`,
             });
           }
           break;
@@ -67,6 +71,70 @@ export function runValidator(binaryPath: string, workspaceFolder: string): Promi
       }
     });
   });
+}
+
+/**
+ * Extracts the JSON object from CLI stdout.
+ * The CLI outputs banner + progress text before the JSON.
+ * Strategy: find the last top-level JSON object in stdout (starts with '{' at line start
+ * and ends with '}' at line start).
+ */
+function extractJson(stdout: string): string {
+  // Find the last occurrence of a line starting with '{' — that's the JSON start
+  const lines = stdout.split('\n');
+  let jsonStart = -1;
+  let braceDepth = 0;
+  let jsonEnd = -1;
+
+  // Scan backwards to find the last top-level '{' 
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const trimmed = lines[i].trim();
+    if (trimmed === '}' && jsonEnd === -1) {
+      jsonEnd = i;
+      braceDepth = 1;
+    } else if (jsonEnd !== -1) {
+      // Count braces to find matching open
+      for (const ch of trimmed) {
+        if (ch === '}') { braceDepth++; }
+        if (ch === '{') { braceDepth--; }
+      }
+      if (braceDepth === 0) {
+        jsonStart = i;
+        break;
+      }
+    }
+  }
+
+  if (jsonStart === -1 || jsonEnd === -1) {
+    // Fallback: try to find first '{' and last '}'
+    const firstBrace = stdout.indexOf('{');
+    const lastBrace = stdout.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      return stdout.substring(firstBrace, lastBrace + 1);
+    }
+    throw new Error('No JSON object found in CLI output');
+  }
+
+  return lines.slice(jsonStart, jsonEnd + 1).join('\n');
+}
+
+/**
+ * Normalizes the raw CLI JSON to our ValidationResult interface.
+ * The CLI uses: total_duration_ms (not duration_ms), PASSED (not 'passed' for status).
+ */
+function normalizeResult(raw: Record<string, unknown>): ValidationResult {
+  return {
+    status: raw.status as 'PASSED' | 'FAILED',
+    steps: Array.isArray(raw.steps) ? raw.steps.map((s: Record<string, unknown>) => ({
+      name: s.name as string,
+      status: (s.status as string).toLowerCase() as 'passed' | 'failed' | 'skipped',
+      message: s.trace as string | undefined,
+      duration_ms: s.duration_ms as number | undefined,
+      errors: s.errors as ValidationResult['steps'][0]['errors'],
+    })) : [],
+    summary: raw.summary as string || `${raw.status} — ${(raw.steps as unknown[])?.length ?? 0} steps`,
+    total_duration_ms: (raw.total_duration_ms as number) ?? (raw.duration_ms as number) ?? 0,
+  };
 }
 
 /**
@@ -109,8 +177,15 @@ function getExitCode(error: Error | null): number {
   if (!error) {
     return 0;
   }
-  // Node's ChildProcess error includes 'code' as exit status number
-  const code = (error as unknown as { status?: number }).status;
+  if ((error as unknown as { killed?: boolean }).killed) {
+    return 130;
+  }
+  const status = (error as unknown as { status?: number }).status;
+  if (typeof status === 'number') {
+    return status;
+  }
+  // Node sometimes puts it in code for ChildProcess errors
+  const code = (error as unknown as { code?: number | string }).code;
   if (typeof code === 'number') {
     return code;
   }

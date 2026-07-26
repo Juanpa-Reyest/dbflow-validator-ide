@@ -54,7 +54,7 @@ function buildHtml(
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'N/A';
   const timestamp = new Date().toLocaleString();
-  const totalDuration = result.duration_ms;
+  const totalDuration = result.total_duration_ms;
 
   // Build steps table rows
   const stepsRows = result.steps.map((step) => {

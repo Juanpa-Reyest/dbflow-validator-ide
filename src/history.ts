@@ -112,7 +112,7 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
 
         const timestamp = stat.mtime;
         const passed = result.status === 'PASSED';
-        const durationMs = result.duration_ms ?? 0;
+        const durationMs = result.total_duration_ms ?? 0;
 
         items.push(new HistoryItem(runDir, timestamp, passed, durationMs, result));
       } catch {

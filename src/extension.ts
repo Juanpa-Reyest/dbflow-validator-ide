@@ -102,7 +102,7 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
         clearDiagnostics(diagnosticCollection);
         statusBarItem.text = '$(check) DBFlow: Passed';
         vscode.window.showInformationMessage(
-          `✅ DBFlow Validator: All checks passed! (${runResult.result?.duration_ms}ms)`
+          `✅ DBFlow Validator: All checks passed! (${runResult.result?.total_duration_ms}ms)`
         );
         outputChannel.appendLine(`Result: PASSED - ${runResult.result?.summary}`);
 
