@@ -14,13 +14,13 @@ describe('runner', () => {
           },
         ],
         summary: 'All 1 steps passed',
-        duration_ms: 1234,
+        total_duration_ms: 1234,
       };
 
       expect(json.status).toBe('PASSED');
       expect(json.steps).toHaveLength(1);
       expect(json.steps[0].status).toBe('passed');
-      expect(json.duration_ms).toBe(1234);
+      expect(json.total_duration_ms).toBe(1234);
     });
 
     it('should parse a FAILED result with errors', () => {
@@ -44,7 +44,7 @@ describe('runner', () => {
           },
         ],
         summary: '1 of 3 steps failed',
-        duration_ms: 2345,
+        total_duration_ms: 2345,
       };
 
       expect(json.status).toBe('FAILED');
@@ -61,7 +61,7 @@ describe('runner', () => {
           { name: 'syntax-check', status: 'skipped', message: 'No SQL files changed' },
         ],
         summary: 'All checks passed',
-        duration_ms: 500,
+        total_duration_ms: 500,
       };
 
       expect(json.steps[0].errors).toBeUndefined();
