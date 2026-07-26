@@ -5,6 +5,35 @@ import { ValidationResult } from './types';
 import { showValidationReport } from './webview';
 
 /**
+ * Formats a duration in milliseconds to a human-readable string.
+ */
+function formatDuration(ms: number): string {
+  if (ms < 1000) { return `${ms}ms`; }
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) { return `${seconds}s`; }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+}
+
+/**
+ * Reads the report.json from a run directory and extracts base_branch.
+ */
+function readBranch(runDir: string): string | undefined {
+  try {
+    const reportPath = path.join(runDir, 'report.json');
+    if (fs.existsSync(reportPath)) {
+      const content = fs.readFileSync(reportPath, 'utf-8');
+      const data = JSON.parse(content);
+      return data.base_branch || undefined;
+    }
+  } catch {
+    // ignore
+  }
+  return undefined;
+}
+
+/**
  * Represents a single execution history item in the tree view.
  */
 export class HistoryItem extends vscode.TreeItem {
@@ -13,15 +42,29 @@ export class HistoryItem extends vscode.TreeItem {
     public readonly timestamp: Date,
     public readonly passed: boolean,
     public readonly durationMs: number,
-    public readonly result: ValidationResult
+    public readonly result: ValidationResult,
+    public readonly runNumber: number,
+    public readonly branch?: string
   ) {
-    const icon = passed ? '✅' : '❌';
-    const dateStr = formatDate(timestamp);
-    const label = `${icon} ${dateStr}`;
+    const label = `Run #${runNumber}`;
     super(label, vscode.TreeItemCollapsibleState.None);
 
-    this.description = `${durationMs}ms`;
-    this.tooltip = `${passed ? 'Passed' : 'Failed'} — ${dateStr} — ${durationMs}ms\n${runDir}`;
+    const statusIcon = passed ? '✔' : '✘';
+    const durationStr = formatDuration(durationMs);
+    const branchStr = branch ? ` · ${branch}` : '';
+
+    this.description = `${statusIcon} ${durationStr}${branchStr}`;
+
+    const dateStr = formatDate(timestamp);
+    this.tooltip = new vscode.MarkdownString(
+      `**Run #${runNumber}**\n\n` +
+      `Status: ${passed ? '✔ PASSED' : '✘ FAILED'}\n\n` +
+      `Duration: ${durationStr}\n\n` +
+      `Branch: ${branch || '—'}\n\n` +
+      `Date: ${dateStr}\n\n` +
+      `Path: \`${runDir}\``
+    );
+
     this.iconPath = new vscode.ThemeIcon(
       passed ? 'pass' : 'error',
       new vscode.ThemeColor(passed ? 'testing.iconPassed' : 'testing.iconFailed')
@@ -43,14 +86,24 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private items: HistoryItem[] = [];
+  private treeView: vscode.TreeView<HistoryItem> | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.loadHistory();
   }
 
+  /**
+   * Binds the TreeView instance so we can update its title/description.
+   */
+  setTreeView(treeView: vscode.TreeView<HistoryItem>): void {
+    this.treeView = treeView;
+    this.updateTreeViewDescription();
+  }
+
   refresh(): void {
     this.loadHistory();
     this._onDidChangeTreeData.fire();
+    this.updateTreeViewDescription();
   }
 
   getTreeItem(element: HistoryItem): vscode.TreeItem {
@@ -62,13 +115,20 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
   }
 
   /**
-   * Returns a summary string for display: "Últimas X: Y passed, Z failed"
+   * Returns a summary string: "4 runs · 3 passed · 1 failed"
    */
   getSummary(): string {
     const total = this.items.length;
+    if (total === 0) { return 'No runs yet'; }
     const passed = this.items.filter((i) => i.passed).length;
     const failed = total - passed;
-    return `Últimas ${total}: ${passed} passed, ${failed} failed`;
+    return `${total} runs · ${passed} passed · ${failed} failed`;
+  }
+
+  private updateTreeViewDescription(): void {
+    if (this.treeView) {
+      this.treeView.description = this.getSummary();
+    }
   }
 
   private loadHistory(): void {
@@ -91,7 +151,7 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
       return;
     }
 
-    const items: HistoryItem[] = [];
+    const items: Array<{ runDir: string; timestamp: Date; passed: boolean; durationMs: number; result: ValidationResult; branch?: string }> = [];
 
     for (const entry of entries) {
       const runDir = path.join(runsDir, entry);
@@ -113,18 +173,33 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
         const timestamp = stat.mtime;
         const passed = result.status === 'PASSED';
         const durationMs = result.total_duration_ms ?? 0;
+        const branch = readBranch(runDir);
 
-        items.push(new HistoryItem(runDir, timestamp, passed, durationMs, result));
+        items.push({ runDir, timestamp, passed, durationMs, result, branch });
       } catch {
         // Skip corrupted entries
         continue;
       }
     }
 
-    // Sort descending by date (most recent first)
-    items.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    // Sort ascending by date to assign sequential numbers (oldest = #1)
+    items.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
 
-    this.items = items;
+    // Assign sequential run numbers
+    const historyItems = items.map((item, index) => new HistoryItem(
+      item.runDir,
+      item.timestamp,
+      item.passed,
+      item.durationMs,
+      item.result,
+      index + 1,
+      item.branch
+    ));
+
+    // Reverse to show most recent first
+    historyItems.reverse();
+
+    this.items = historyItems;
   }
 
   /**
