@@ -1,0 +1,57 @@
+{
+  "name": "dbflow-validator",
+  "displayName": "DBFlow Validator",
+  "description": "Zero-config local validation of PostgreSQL database changes before opening a PR",
+  "version": "0.1.0",
+  "publisher": "juanpa-reyest",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters"
+  ],
+  "activationEvents": [
+    "onCommand:dbflow-validator.validate"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "dbflow-validator.validate",
+        "title": "DBFlow: Validate DB Changes"
+      }
+    ],
+    "configuration": {
+      "title": "DBFlow Validator",
+      "properties": {
+        "dbflowValidator.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Override path to the dbflow-validator binary. If empty, the extension will search PATH or download it automatically."
+        },
+        "dbflowValidator.postgresImage": {
+          "type": "string",
+          "default": "",
+          "description": "Override the PostgreSQL Docker image used for validation (e.g. postgres:16)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "esbuild ./src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node --minify",
+    "lint": "eslint src --ext ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "5.5.4",
+    "@types/vscode": "1.85.0",
+    "@types/node": "20.14.12",
+    "eslint": "8.57.0",
+    "esbuild": "0.21.5",
+    "@vscode/test-cli": "0.0.10",
+    "vitest": "1.6.0"
+  }
+}
