@@ -5,6 +5,78 @@ import { ValidationResult } from './types';
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// SVG ICONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function svgDatabase(size = 24, color = '#00d4ff'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <ellipse cx="12" cy="5" rx="9" ry="3"/>
+    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+  </svg>`;
+}
+
+function svgCalendar(size = 14, color = '#8892b0'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+    <line x1="16" y1="2" x2="16" y2="6"/>
+    <line x1="8" y1="2" x2="8" y2="6"/>
+    <line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>`;
+}
+
+function svgClock(size = 14, color = '#8892b0'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <polyline points="12 6 12 12 16 14"/>
+  </svg>`;
+}
+
+function svgGitBranch(size = 14, color = '#8892b0'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <line x1="6" y1="3" x2="6" y2="15"/>
+    <circle cx="18" cy="6" r="3"/>
+    <circle cx="6" cy="18" r="3"/>
+    <path d="M18 9a9 9 0 0 1-9 9"/>
+  </svg>`;
+}
+
+function svgLayers(size = 14, color = '#8892b0'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+    <polyline points="2 17 12 22 22 17"/>
+    <polyline points="2 12 12 17 22 12"/>
+  </svg>`;
+}
+
+function svgCheckCircle(size = 22, color = '#00ff88'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+    <polyline points="22 4 12 14.01 9 11.01"/>
+  </svg>`;
+}
+
+function svgXCircle(size = 22, color = '#ff4455'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="15" y1="9" x2="9" y2="15"/>
+    <line x1="9" y1="9" x2="15" y2="15"/>
+  </svg>`;
+}
+
+function svgAlertTriangle(size = 14, color = '#ffaa00'): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/>
+    <line x1="12" y1="17" x2="12.01" y2="17"/>
+  </svg>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MAIN EXPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
 /**
  * Shows the validation report in a WebView panel with a professional dashboard.
  * Creates a new panel or reveals the existing one.
@@ -18,7 +90,13 @@ export function showValidationReport(
 
   if (currentPanel) {
     currentPanel.reveal(column);
+    currentPanel.webview.html = buildHtml(result, scriptReportPath);
   } else {
+    const localResourceRoots: vscode.Uri[] = [];
+    if (scriptReportPath && fs.existsSync(scriptReportPath)) {
+      localResourceRoots.push(vscode.Uri.file(scriptReportPath));
+    }
+
     currentPanel = vscode.window.createWebviewPanel(
       'dbflowValidatorReport',
       'DBFlow Validation Report',
@@ -26,9 +104,7 @@ export function showValidationReport(
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: scriptReportPath
-          ? [vscode.Uri.file(scriptReportPath)]
-          : [],
+        localResourceRoots,
       }
     );
 
@@ -37,10 +113,14 @@ export function showValidationReport(
       null,
       context.subscriptions
     );
-  }
 
-  currentPanel.webview.html = buildHtml(result, currentPanel.webview, scriptReportPath);
+    currentPanel.webview.html = buildHtml(result, scriptReportPath);
+  }
 }
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════════════════════
 
 function formatDuration(ms: number): string {
   if (ms < 1000) { return `${ms}ms`; }
@@ -51,103 +131,102 @@ function formatDuration(ms: number): string {
   return `${minutes}m ${remainingSeconds}s`;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Reads the script-report folder and builds a self-contained HTML string
+ * by inlining CSS and JS into the HTML.
+ */
+function buildEmbeddedScriptReport(scriptReportPath: string): string | null {
+  const htmlPath = path.join(scriptReportPath, 'validation_report.html');
+  const cssPath = path.join(scriptReportPath, 'css', 'styles.css');
+  const jsPath = path.join(scriptReportPath, 'js', 'app.js');
+
+  if (!fs.existsSync(htmlPath)) { return null; }
+
+  let html = fs.readFileSync(htmlPath, 'utf-8');
+
+  // Inline CSS: replace <link rel="stylesheet" href="css/styles.css" /> with <style>...</style>
+  if (fs.existsSync(cssPath)) {
+    const css = fs.readFileSync(cssPath, 'utf-8');
+    html = html.replace(
+      /<link[^>]*href=["']css\/styles\.css["'][^>]*\/?>/i,
+      `<style>${css}</style>`
+    );
+  }
+
+  // Inline JS: replace <script src="js/app.js"></script> with <script>...</script>
+  if (fs.existsSync(jsPath)) {
+    const js = fs.readFileSync(jsPath, 'utf-8');
+    html = html.replace(
+      /<script[^>]*src=["']js\/app\.js["'][^>]*><\/script>/i,
+      `<script>${js}</script>`
+    );
+  }
+
+  return html;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HTML BUILDER
+// ═══════════════════════════════════════════════════════════════════════════════
+
 function buildHtml(
   result: ValidationResult,
-  _webview: vscode.Webview,
   scriptReportPath?: string
 ): string {
   const passed = result.status === 'PASSED';
-  const statusIcon = passed ? '✔' : '✘';
+  const statusColorMain = passed ? '#00ff88' : '#ff4455';
+  const statusGlow = passed ? 'rgba(0, 255, 136, 0.4)' : 'rgba(255, 68, 85, 0.4)';
+  const statusIcon = passed ? svgCheckCircle(22, statusColorMain) : svgXCircle(22, statusColorMain);
   const statusText = passed ? 'PASSED' : 'FAILED';
-  const statusColorMain = passed ? '#00ff88' : '#ff4444';
-  const statusGlow = passed ? 'rgba(0, 255, 136, 0.4)' : 'rgba(255, 68, 68, 0.4)';
 
   const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'N/A';
   const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
   const totalDuration = formatDuration(result.total_duration_ms);
-  const runId = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 15).replace(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/, '$1-$2-$3_$4-$5-$6');
+  const now = new Date();
+  const runId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
 
-  // Build steps rows
-  const stepsRows = result.steps.map((step, index) => {
-    const num = String(index + 1).padStart(2, '0');
+  // Detect branch from workspace folder name or git
+  const branchName = path.basename(workspacePath);
+
+  // Build steps rows (terminal style)
+  const stepsHtml = result.steps.map((step, index) => {
+    const num = String(index + 1).padStart(2, ' ');
     const stepPassed = step.status === 'passed';
     const stepSkipped = step.status === 'skipped';
     const icon = stepSkipped ? '⊘' : (stepPassed ? '✔' : '✘');
-    const iconClass = stepSkipped ? 'step-skipped' : (stepPassed ? 'step-passed' : 'step-failed');
+    const iconClass = stepSkipped ? 'icon-skipped' : (stepPassed ? 'icon-passed' : 'icon-failed');
     const duration = step.duration_ms !== undefined ? formatDuration(step.duration_ms) : '—';
-    const rowClass = index % 2 === 0 ? 'row-even' : 'row-odd';
-    return `<tr class="${rowClass}">
-      <td class="col-num">#${num}</td>
-      <td class="col-icon ${iconClass}">${icon}</td>
-      <td class="col-name">${step.name}</td>
-      <td class="col-duration">${duration}</td>
-    </tr>`;
+    const nameLen = step.name.length;
+    const dotsCount = Math.max(2, 36 - nameLen);
+    const dots = '.'.repeat(dotsCount);
+
+    let errorLine = '';
+    if (step.status === 'failed' && step.errors && step.errors.length > 0) {
+      const firstErr = step.errors[0];
+      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(firstErr.message)}</div>`;
+    } else if (step.status === 'failed' && step.message) {
+      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(step.message)}</div>`;
+    }
+
+    return `<div class="step-row">
+      <span class="step-content"><span class="${iconClass}">   ${icon}</span>  <span class="step-num">${num}</span>  <span class="step-name">${escapeHtml(step.name)}</span> <span class="step-dots">${dots}</span> <span class="step-duration">${duration}</span></span>${errorLine}
+    </div>`;
   }).join('\n');
 
-  // Build errors section
-  const allErrors = result.steps.flatMap((step) =>
-    (step.errors || []).map((e) => ({ ...e, stepName: step.name }))
-  );
-
-  let errorsSection = '';
-  if (allErrors.length > 0) {
-    const errorRows = allErrors.map((e, idx) => {
-      const rowClass = idx % 2 === 0 ? 'row-even' : 'row-odd';
-      return `<tr class="${rowClass}">
-        <td class="err-file">${e.file || '—'}</td>
-        <td class="err-line">${e.line ?? '—'}</td>
-        <td class="err-rule">${e.rule || '—'}</td>
-        <td class="err-msg">${e.message}</td>
-        <td class="err-sev"><span class="sev-badge sev-${e.severity}">${e.severity.toUpperCase()}</span></td>
-      </tr>`;
-    }).join('\n');
-
-    errorsSection = `
-      <div class="section">
-        <details open>
-          <summary class="section-header">
-            <span class="section-icon">⚠</span>
-            <span class="section-title">ERRORS & WARNINGS</span>
-            <span class="section-count">${allErrors.length}</span>
-          </summary>
-          <div class="section-body">
-            <table class="errors-table">
-              <thead>
-                <tr>
-                  <th>FILE</th>
-                  <th>LINE</th>
-                  <th>RULE</th>
-                  <th>MESSAGE</th>
-                  <th>SEVERITY</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${errorRows}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      </div>`;
-  }
-
-  // Script report section
-  let scriptReportSection = '';
+  // Embedded script report
+  let scriptReportContent = '<div class="no-report">No script report available for this run</div>';
   if (scriptReportPath) {
-    const indexHtml = path.join(scriptReportPath, 'index.html');
-    if (fs.existsSync(indexHtml)) {
-      const reportContent = fs.readFileSync(indexHtml, 'utf-8');
-      scriptReportSection = `
-        <div class="section">
-          <details>
-            <summary class="section-header">
-              <span class="section-icon">◈</span>
-              <span class="section-title">SCRIPT REPORT</span>
-            </summary>
-            <div class="section-body script-report-container">
-              ${reportContent}
-            </div>
-          </details>
-        </div>`;
+    const embedded = buildEmbeddedScriptReport(scriptReportPath);
+    if (embedded) {
+      scriptReportContent = `<div class="script-report-frame">${embedded}</div>`;
     }
   }
 
@@ -158,27 +237,26 @@ function buildHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DBFlow Validation Report</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap');
-
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
       font-size: 13px;
-      background: #1a1a2e;
+      background: #0f0f1a;
       color: #e0e0e0;
       padding: 0;
       line-height: 1.6;
       min-height: 100vh;
     }
 
-    /* ═══ HEADER ═══ */
+    /* ═══════════════════════════════════════════════════════════════════════════
+       HEADER
+       ═══════════════════════════════════════════════════════════════════════════ */
     .header {
-      background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #16213e 100%);
-      border-bottom: 1px solid rgba(0, 212, 255, 0.2);
-      padding: 32px 40px;
+      background: linear-gradient(135deg, #0a0a14 0%, #1a1a2e 50%, #0f1528 100%);
+      border-bottom: 1px solid rgba(0, 212, 255, 0.15);
+      padding: 28px 32px 20px;
       position: relative;
-      overflow: hidden;
     }
 
     .header::before {
@@ -191,29 +269,38 @@ function buildHtml(
       background: linear-gradient(90deg, transparent, ${statusColorMain}, transparent);
     }
 
-    .header-top {
+    .header-content {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 20px;
     }
 
     .brand {
       display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+    }
+
+    .brand-text {
+      display: flex;
       align-items: baseline;
-      gap: 12px;
+      gap: 10px;
     }
 
     .brand-name {
-      font-size: 20px;
+      font-size: 18px;
       font-weight: 700;
       letter-spacing: 3px;
       color: #ffffff;
-      text-transform: uppercase;
     }
 
     .brand-version {
-      font-size: 11px;
+      font-size: 10px;
       color: #00d4ff;
       background: rgba(0, 212, 255, 0.1);
       padding: 2px 8px;
@@ -227,266 +314,194 @@ function buildHtml(
       gap: 10px;
       padding: 10px 24px;
       border-radius: 6px;
-      background: rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.08);
+      background: rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.08);
       border: 1px solid ${statusColorMain};
-      box-shadow: 0 0 20px ${statusGlow}, inset 0 0 20px rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.05);
+      box-shadow: 0 0 20px ${statusGlow}, inset 0 0 15px rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.05);
       animation: statusPulse 3s ease-in-out infinite;
     }
 
     @keyframes statusPulse {
-      0%, 100% { box-shadow: 0 0 20px ${statusGlow}, inset 0 0 20px rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.05); }
-      50% { box-shadow: 0 0 30px ${statusGlow}, inset 0 0 30px rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.1); }
+      0%, 100% { box-shadow: 0 0 20px ${statusGlow}; }
+      50% { box-shadow: 0 0 35px ${statusGlow}; }
     }
 
-    .status-icon {
-      font-size: 22px;
-      color: ${statusColorMain};
+    .status-badge-icon {
+      display: flex;
+      align-items: center;
     }
 
-    .status-text {
-      font-size: 18px;
+    .status-badge-text {
+      font-size: 16px;
       font-weight: 700;
       color: ${statusColorMain};
       letter-spacing: 2px;
     }
 
-    .header-separator {
-      color: rgba(0, 212, 255, 0.3);
-      font-size: 11px;
-      letter-spacing: -1px;
-      user-select: none;
-      overflow: hidden;
-      white-space: nowrap;
-    }
-
-    /* ═══ RUN INFO BAR ═══ */
-    .run-info {
-      background: rgba(22, 33, 62, 0.6);
+    /* ═══════════════════════════════════════════════════════════════════════════
+       INFO BAR
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .info-bar {
+      background: rgba(15, 15, 26, 0.8);
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      padding: 10px 40px;
+      padding: 10px 32px;
       display: flex;
       align-items: center;
       gap: 24px;
       font-size: 12px;
-      color: #8892b0;
     }
 
-    .run-info-item {
+    .info-item {
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 7px;
     }
 
-    .run-info-label {
-      color: #5a6380;
-      text-transform: uppercase;
-      font-size: 10px;
-      letter-spacing: 1px;
+    .info-item svg {
+      flex-shrink: 0;
     }
 
-    .run-info-value {
+    .info-value {
       color: #00d4ff;
     }
 
-    .run-info-separator {
+    .info-separator {
       color: rgba(255, 255, 255, 0.15);
+      user-select: none;
     }
 
-    /* ═══ MAIN CONTENT ═══ */
-    .content {
-      padding: 24px 40px;
-      max-width: 1000px;
-    }
-
-    /* ═══ STEPS TABLE ═══ */
-    .section {
-      margin-bottom: 24px;
-    }
-
-    .section-header {
+    /* ═══════════════════════════════════════════════════════════════════════════
+       TABS
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .tabs-bar {
+      background: #1a1a2e;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 0 32px;
       display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 12px 0;
-      cursor: pointer;
-      list-style: none;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-      margin-bottom: 12px;
+      gap: 0;
     }
 
-    .section-header::-webkit-details-marker { display: none; }
-
-    .section-icon {
-      color: #00d4ff;
-      font-size: 14px;
-    }
-
-    .section-title {
-      font-size: 11px;
-      font-weight: 600;
-      letter-spacing: 2px;
-      color: #8892b0;
-      text-transform: uppercase;
-    }
-
-    .section-count {
-      font-size: 10px;
-      background: rgba(0, 212, 255, 0.15);
-      color: #00d4ff;
-      padding: 1px 7px;
-      border-radius: 10px;
-      margin-left: 8px;
-    }
-
-    .steps-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .steps-table tr {
-      transition: background 0.15s ease;
-    }
-
-    .steps-table tr:hover {
-      background: rgba(0, 212, 255, 0.04) !important;
-    }
-
-    .row-even { background: transparent; }
-    .row-odd { background: rgba(255, 255, 255, 0.015); }
-
-    .steps-table td {
-      padding: 8px 12px;
+    .tab-btn {
+      background: none;
       border: none;
-      vertical-align: middle;
-    }
-
-    .col-num {
-      width: 50px;
-      color: #5a6380;
-      font-size: 11px;
-    }
-
-    .col-icon {
-      width: 30px;
-      font-size: 14px;
-      text-align: center;
-    }
-
-    .step-passed { color: #00ff88; }
-    .step-failed { color: #ff4444; }
-    .step-skipped { color: #666; }
-
-    .col-name {
-      color: #ccd6f6;
-      font-weight: 400;
-    }
-
-    .col-duration {
-      text-align: right;
-      color: #5a6380;
+      color: #666680;
+      font-family: inherit;
       font-size: 12px;
-      width: 80px;
+      font-weight: 500;
+      padding: 12px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+      letter-spacing: 0.5px;
     }
 
-    /* ═══ RESULT BANNER ═══ */
+    .tab-btn:hover {
+      color: #e0e0e0;
+      background: rgba(0, 212, 255, 0.03);
+    }
+
+    .tab-btn.active {
+      color: #00d4ff;
+      border-bottom-color: #00d4ff;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       TAB 1: PIPELINE
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .pipeline-content {
+      padding: 24px 32px;
+    }
+
+    .steps-header-line {
+      color: #666680;
+      font-size: 11px;
+      letter-spacing: -0.5px;
+      user-select: none;
+      margin-bottom: 8px;
+      overflow: hidden;
+    }
+
+    .step-row {
+      padding: 4px 0;
+      transition: background 0.15s ease;
+      border-radius: 3px;
+    }
+
+    .step-row:hover {
+      background: rgba(0, 212, 255, 0.04);
+    }
+
+    .step-content {
+      display: inline;
+      white-space: pre;
+    }
+
+    .icon-passed { color: #00ff88; }
+    .icon-failed { color: #ff4455; }
+    .icon-skipped { color: #666680; }
+
+    .step-num { color: #666680; }
+    .step-name { color: #e0e0e0; }
+    .step-dots { color: #333348; }
+    .step-duration { color: #666680; }
+
+    .step-error-line {
+      color: #ff4455;
+      font-size: 12px;
+      padding: 2px 0 6px 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .steps-footer-line {
+      color: #666680;
+      font-size: 11px;
+      letter-spacing: -0.5px;
+      user-select: none;
+      margin-top: 8px;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       RESULT BANNER
+       ═══════════════════════════════════════════════════════════════════════════ */
     .result-banner {
-      margin: 24px 0;
-      padding: 16px 24px;
+      margin: 24px 0 0;
+      padding: 18px 24px;
       border-radius: 6px;
       display: flex;
       align-items: center;
-      justify-content: space-between;
-      background: linear-gradient(90deg, rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.1), rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.03));
-      border: 1px solid rgba(${passed ? '0, 255, 136' : '255, 68, 68'}, 0.3);
+      justify-content: center;
+      gap: 16px;
+      background: linear-gradient(90deg, rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.12), rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.04));
+      border: 1px solid rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.3);
     }
 
-    .result-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-
-    .result-label {
-      font-size: 10px;
-      letter-spacing: 2px;
-      color: #8892b0;
-      text-transform: uppercase;
-    }
-
-    .result-status {
-      font-size: 16px;
+    .result-text {
+      font-size: 15px;
       font-weight: 700;
       color: ${statusColorMain};
-      letter-spacing: 1px;
+      letter-spacing: 2px;
     }
 
     .result-duration {
-      color: #5a6380;
-      font-size: 12px;
+      color: #666680;
+      font-size: 13px;
+      margin-left: 16px;
     }
 
-    /* ═══ ERRORS TABLE ═══ */
-    .errors-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 12px;
-    }
-
-    .errors-table th {
-      padding: 8px 12px;
-      text-align: left;
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: #5a6380;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-    }
-
-    .errors-table td {
-      padding: 8px 12px;
-      border: none;
-      vertical-align: top;
-    }
-
-    .errors-table tr { transition: background 0.15s ease; }
-    .errors-table tr:hover { background: rgba(255, 68, 68, 0.04) !important; }
-
-    .err-file { color: #00d4ff; font-size: 11px; }
-    .err-line { color: #5a6380; font-size: 11px; width: 50px; }
-    .err-rule { color: #ffaa00; font-size: 11px; }
-    .err-msg { color: #ccd6f6; }
-
-    .sev-badge {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 3px;
-      font-size: 9px;
-      font-weight: 700;
-      letter-spacing: 1px;
-    }
-
-    .sev-blocker { background: rgba(255, 68, 68, 0.2); color: #ff4444; border: 1px solid rgba(255, 68, 68, 0.3); }
-    .sev-error { background: rgba(255, 68, 68, 0.15); color: #ff6666; border: 1px solid rgba(255, 68, 68, 0.2); }
-    .sev-major { background: rgba(255, 170, 0, 0.15); color: #ffaa00; border: 1px solid rgba(255, 170, 0, 0.2); }
-    .sev-warning { background: rgba(255, 170, 0, 0.12); color: #ffcc00; border: 1px solid rgba(255, 170, 0, 0.2); }
-    .sev-minor { background: rgba(255, 235, 59, 0.12); color: #ffeb3b; border: 1px solid rgba(255, 235, 59, 0.2); }
-    .sev-info { background: rgba(0, 212, 255, 0.1); color: #00d4ff; border: 1px solid rgba(0, 212, 255, 0.2); }
-
-    /* ═══ SCRIPT REPORT ═══ */
-    .script-report-container {
-      margin-top: 12px;
-      padding: 16px;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(255, 255, 255, 0.06);
-      border-radius: 4px;
-      overflow: auto;
-      max-height: 500px;
-    }
-
-    /* ═══ FOOTER ═══ */
+    /* ═══════════════════════════════════════════════════════════════════════════
+       FOOTER
+       ═══════════════════════════════════════════════════════════════════════════ */
     .footer {
       margin-top: 32px;
-      padding: 16px 40px;
+      padding: 14px 32px;
       border-top: 1px solid rgba(255, 255, 255, 0.06);
       display: flex;
       justify-content: space-between;
@@ -495,18 +510,39 @@ function buildHtml(
       color: #3d4663;
     }
 
-    .footer-item {
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    /* ═══════════════════════════════════════════════════════════════════════════
+       TAB 2: SCRIPT REPORT
+       ═══════════════════════════════════════════════════════════════════════════ */
+    .script-report-frame {
+      all: initial;
+      display: block;
+      width: 100%;
+      min-height: 400px;
+      font-family: sans-serif;
     }
 
-    /* ═══ DETAILS STYLING ═══ */
-    details summary { list-style: none; }
-    details summary::-webkit-details-marker { display: none; }
-    details[open] .section-header .section-icon { color: #00ff88; }
+    .script-report-frame * {
+      all: revert;
+    }
 
-    /* ═══ SCROLLBAR ═══ */
+    .no-report {
+      padding: 60px 32px;
+      text-align: center;
+      color: #666680;
+      font-size: 14px;
+    }
+
+    .no-report::before {
+      content: '📊';
+      display: block;
+      font-size: 48px;
+      margin-bottom: 16px;
+      opacity: 0.4;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════════
+       SCROLLBAR
+       ═══════════════════════════════════════════════════════════════════════════ */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
     ::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.2); border-radius: 3px; }
@@ -516,85 +552,83 @@ function buildHtml(
 <body>
   <!-- ═══ HEADER ═══ -->
   <div class="header">
-    <div class="header-top">
+    <div class="header-content">
       <div class="brand">
-        <span class="brand-name">DBFLOW VALIDATOR</span>
-        <span class="brand-version">v0.1.0</span>
+        <div class="brand-logo">${svgDatabase(28, '#00d4ff')}</div>
+        <div class="brand-text">
+          <span class="brand-name">DBFLOW VALIDATOR</span>
+          <span class="brand-version">v0.3.2</span>
+        </div>
       </div>
       <div class="status-badge">
-        <span class="status-icon">${statusIcon}</span>
-        <span class="status-text">${statusText}</span>
+        <span class="status-badge-icon">${statusIcon}</span>
+        <span class="status-badge-text">${statusText}</span>
       </div>
     </div>
-    <div class="header-separator">──────────────────────────────────────────────────────────────────────────────────────────────</div>
   </div>
 
-  <!-- ═══ RUN INFO BAR ═══ -->
-  <div class="run-info">
-    <div class="run-info-item">
-      <span class="run-info-label">RUN</span>
-      <span class="run-info-value">${runId}</span>
-    </div>
-    <span class="run-info-separator">·</span>
-    <div class="run-info-item">
-      <span class="run-info-label">duration</span>
-      <span class="run-info-value">${totalDuration}</span>
-    </div>
-    <span class="run-info-separator">·</span>
-    <div class="run-info-item">
-      <span class="run-info-label">steps</span>
-      <span class="run-info-value">${result.steps.length}</span>
-    </div>
+  <!-- ═══ INFO BAR ═══ -->
+  <div class="info-bar">
+    <div class="info-item">${svgCalendar(14, '#666680')}<span class="info-value">RUN ${runId}</span></div>
+    <span class="info-separator">·</span>
+    <div class="info-item">${svgClock(14, '#666680')}<span class="info-value">${totalDuration}</span></div>
+    <span class="info-separator">·</span>
+    <div class="info-item">${svgGitBranch(14, '#666680')}<span class="info-value">${escapeHtml(branchName)}</span></div>
+    <span class="info-separator">·</span>
+    <div class="info-item">${svgLayers(14, '#666680')}<span class="info-value">${result.steps.length} steps</span></div>
   </div>
 
-  <!-- ═══ MAIN CONTENT ═══ -->
-  <div class="content">
+  <!-- ═══ TABS ═══ -->
+  <div class="tabs-bar">
+    <button class="tab-btn active" data-tab="pipeline">🛠️ Pipeline</button>
+    <button class="tab-btn" data-tab="quality-report">📊 Quality Report</button>
+  </div>
 
-    <!-- Steps -->
-    <div class="section">
-      <details open>
-        <summary class="section-header">
-          <span class="section-icon">◆</span>
-          <span class="section-title">VALIDATION STEPS</span>
-          <span class="section-count">${result.steps.length}</span>
-        </summary>
-        <div class="section-body">
-          <table class="steps-table">
-            <tbody>
-              ${stepsRows}
-            </tbody>
-          </table>
-        </div>
-      </details>
-    </div>
+  <!-- ═══ TAB 1: PIPELINE ═══ -->
+  <div class="tab-content active" id="tab-pipeline">
+    <div class="pipeline-content">
+      <div class="steps-header-line">────────────────────────────────────────────────────────────────</div>
+      ${stepsHtml}
+      <div class="steps-footer-line">────────────────────────────────────────────────────────────────</div>
 
-    <!-- Result Banner -->
-    <div class="result-banner">
-      <div class="result-left">
-        <span class="result-label">RESULT</span>
-        <span class="result-status">${statusIcon}  ${statusText}</span>
+      <div class="result-banner">
+        <span class="result-text">RESULT  ${passed ? '✔' : '✘'}  ${statusText}</span>
+        <span class="result-duration">total ${totalDuration}</span>
       </div>
-      <span class="result-duration">total ${totalDuration}</span>
     </div>
 
-    <!-- Errors -->
-    ${errorsSection}
-
-    <!-- Script Report -->
-    ${scriptReportSection}
-  </div>
-
-  <!-- ═══ FOOTER ═══ -->
-  <div class="footer">
-    <div class="footer-item">
-      <span>⏱</span>
+    <!-- FOOTER -->
+    <div class="footer">
       <span>${timestamp}</span>
-    </div>
-    <div class="footer-item">
-      <span>◇</span>
-      <span>${workspacePath}</span>
+      <span>${escapeHtml(workspacePath)}</span>
     </div>
   </div>
+
+  <!-- ═══ TAB 2: QUALITY REPORT ═══ -->
+  <div class="tab-content" id="tab-quality-report">
+    ${scriptReportContent}
+  </div>
+
+  <!-- ═══ TAB SWITCHING SCRIPT ═══ -->
+  <script>
+    (function() {
+      const tabs = document.querySelectorAll('.tab-btn');
+      const contents = document.querySelectorAll('.tab-content');
+
+      tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+          const target = this.getAttribute('data-tab');
+
+          tabs.forEach(function(t) { t.classList.remove('active'); });
+          contents.forEach(function(c) { c.classList.remove('active'); });
+
+          this.classList.add('active');
+          var targetEl = document.getElementById('tab-' + target);
+          if (targetEl) { targetEl.classList.add('active'); }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>`;
 }
