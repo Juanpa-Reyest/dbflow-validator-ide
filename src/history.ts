@@ -208,7 +208,7 @@ export class HistoryProvider implements vscode.TreeDataProvider<HistoryItem> {
   openItem(item: HistoryItem): void {
     const scriptReportDir = path.join(item.runDir, 'script-report');
     const scriptReportPath = fs.existsSync(scriptReportDir) ? scriptReportDir : undefined;
-    showValidationReport(this.context, item.result, scriptReportPath);
+    showValidationReport(this.context, item.result, scriptReportPath, item.runDir);
   }
 }
 

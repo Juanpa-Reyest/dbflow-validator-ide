@@ -1,134 +1,109 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { ValidationResult } from './types';
+import { ValidationResult, StepResult } from './types';
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// SVG ICONS
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Design tokens (dbflow-validator brand — keep in sync with the icon)
+// ─────────────────────────────────────────────────────────────────────────────
+const C = {
+  bg: '#0b0d0f',
+  chrome: '#0e1114',
+  surface: '#101418',
+  surfaceAlt: '#0e1216',
+  line: '#1c2126',
+  lineSoft: '#161b1f',
+  text: '#e7ebec',
+  textSoft: '#dfe5e7',
+  muted: '#8b969c',
+  faint: '#6f7b82',
+  dim: '#4a545a',
+  ok: '#4fe0a6',
+  fail: '#f2555f',
+};
 
-function svgDatabase(size = 24, color = '#00d4ff'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <ellipse cx="12" cy="5" rx="9" ry="3"/>
-    <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
-    <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
-  </svg>`;
-}
+const MONO = "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace";
 
-function svgCalendar(size = 14, color = '#8892b0'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-    <line x1="16" y1="2" x2="16" y2="6"/>
-    <line x1="8" y1="2" x2="8" y2="6"/>
-    <line x1="3" y1="10" x2="21" y2="10"/>
-  </svg>`;
-}
+/** Execution phase for each known CLI step, shown next to its name. */
+const PHASES: Record<string, string> = {
+  preflight: 'preparación',
+  clone: 'preparación',
+  'engine-guard': 'preparación',
+  overlay: 'preparación',
+  'container-start': 'entorno',
+  'readiness-probe': 'entorno',
+  'schema-setup': 'entorno',
+  'pom-driver-inject': 'entorno',
+  'properties-patch': 'entorno',
+  'pre-sync-validate': 'validación',
+  'sql-rules-validator': 'validación',
+  'dbflow:sync': 'validación',
+  'dbflow:rollback': 'validación',
+  cleanup: 'limpieza',
+};
 
-function svgClock(size = 14, color = '#8892b0'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="10"/>
-    <polyline points="12 6 12 12 16 14"/>
-  </svg>`;
-}
-
-function svgGitBranch(size = 14, color = '#8892b0'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <line x1="6" y1="3" x2="6" y2="15"/>
-    <circle cx="18" cy="6" r="3"/>
-    <circle cx="6" cy="18" r="3"/>
-    <path d="M18 9a9 9 0 0 1-9 9"/>
-  </svg>`;
-}
-
-function svgLayers(size = 14, color = '#8892b0'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <polygon points="12 2 2 7 12 12 22 7 12 2"/>
-    <polyline points="2 17 12 22 22 17"/>
-    <polyline points="2 12 12 17 22 12"/>
-  </svg>`;
-}
-
-function svgCheckCircle(size = 22, color = '#00ff88'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-    <polyline points="22 4 12 14.01 9 11.01"/>
-  </svg>`;
-}
-
-function svgXCircle(size = 22, color = '#ff4455'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="12" cy="12" r="10"/>
-    <line x1="15" y1="9" x2="9" y2="15"/>
-    <line x1="9" y1="9" x2="15" y2="15"/>
-  </svg>`;
-}
-
-function svgAlertTriangle(size = 14, color = '#ffaa00'): string {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-    <line x1="12" y1="9" x2="12" y2="13"/>
-    <line x1="12" y1="17" x2="12.01" y2="17"/>
-  </svg>`;
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// MAIN EXPORT
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * Shows the validation report in a WebView panel with a professional dashboard.
- * Creates a new panel or reveals the existing one.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Public API — signature is backwards compatible; runDir is optional and only
+// enables the "artefactos del run" card.
+// ─────────────────────────────────────────────────────────────────────────────
 export function showValidationReport(
   context: vscode.ExtensionContext,
   result: ValidationResult,
-  scriptReportPath?: string
+  scriptReportPath?: string,
+  runDir?: string
 ): void {
   const column = vscode.ViewColumn.Beside;
 
   if (currentPanel) {
     currentPanel.reveal(column);
-    currentPanel.webview.html = buildHtml(result, scriptReportPath);
-  } else {
-    const localResourceRoots: vscode.Uri[] = [];
-    if (scriptReportPath && fs.existsSync(scriptReportPath)) {
-      localResourceRoots.push(vscode.Uri.file(scriptReportPath));
-    }
-
-    currentPanel = vscode.window.createWebviewPanel(
-      'dbflowValidatorReport',
-      'DBFlow Validation Report',
-      column,
-      {
-        enableScripts: true,
-        retainContextWhenHidden: true,
-        localResourceRoots,
-      }
-    );
-
-    currentPanel.onDidDispose(
-      () => { currentPanel = undefined; },
-      null,
-      context.subscriptions
-    );
-
-    currentPanel.webview.html = buildHtml(result, scriptReportPath);
+    currentPanel.webview.html = buildHtml(result, scriptReportPath, runDir);
+    return;
   }
+
+  const localResourceRoots: vscode.Uri[] = [];
+  if (scriptReportPath && fs.existsSync(scriptReportPath)) {
+    localResourceRoots.push(vscode.Uri.file(scriptReportPath));
+  }
+
+  currentPanel = vscode.window.createWebviewPanel(
+    'dbflowValidatorReport',
+    'DBFlow Validation Report',
+    column,
+    { enableScripts: true, retainContextWhenHidden: true, localResourceRoots }
+  );
+
+  currentPanel.onDidDispose(() => { currentPanel = undefined; }, null, context.subscriptions);
+
+  // Clicking an artifact row opens the file in the editor.
+  currentPanel.webview.onDidReceiveMessage(
+    (msg: { command?: string; path?: string }) => {
+      if (msg?.command === 'openFile' && msg.path && fs.existsSync(msg.path)) {
+        vscode.window.showTextDocument(vscode.Uri.file(msg.path), { preview: true });
+      }
+    },
+    null,
+    context.subscriptions
+  );
+  currentPanel.webview.html = buildHtml(result, scriptReportPath, runDir);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
-
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 function formatDuration(ms: number): string {
   if (ms < 1000) { return `${ms}ms`; }
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) { return `${seconds}s`; }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
+  const seconds = ms / 1000;
+  if (seconds < 60) { return `${seconds % 1 === 0 ? seconds : seconds.toFixed(1)}s`; }
+  const m = Math.floor(seconds / 60);
+  return `${m}m ${Math.round(seconds % 60)}s`;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) { return `${bytes} B`; }
+  if (bytes < 1024 * 1024) { return `${(bytes / 1024).toFixed(1)} KB`; }
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function escapeHtml(str: string): string {
@@ -139,508 +114,373 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/**
- * Reads the script-report folder and builds a self-contained HTML string
- * by inlining CSS and JS into the HTML.
- */
+/** Brand icon: stacked DB discs + verdict seal. */
+function svgBrand(size: number, seal: string): string {
+  return `<svg width="${size}" height="${size}" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+    <ellipse cx="15" cy="7.5" rx="10.5" ry="3.6" stroke="${C.text}" stroke-width="2"/>
+    <ellipse cx="15" cy="15" rx="10.5" ry="3.6" stroke="${C.text}" stroke-width="2"/>
+    <ellipse cx="15" cy="22.5" rx="10.5" ry="3.6" stroke="${C.text}" stroke-width="2"/>
+    <circle cx="24" cy="24" r="7" fill="${C.bg}"/>
+    <circle cx="24" cy="24" r="5.6" fill="${seal}"/>
+    <path d="M21.4 24.1 L23.3 26 L26.7 22.2" stroke="${C.bg}" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+  </svg>`;
+}
+
+/** Reads report.json from the run dir for values the CLI resolved (branch, repo…). */
+function readReportMeta(runDir?: string): Record<string, unknown> {
+  if (!runDir) { return {}; }
+  try {
+    const p = path.join(runDir, 'report.json');
+    if (fs.existsSync(p)) { return JSON.parse(fs.readFileSync(p, 'utf-8')); }
+  } catch { /* ignore — the panel must render regardless */ }
+  return {};
+}
+
 function buildEmbeddedScriptReport(scriptReportPath: string): string | null {
   const htmlPath = path.join(scriptReportPath, 'validation_report.html');
   const cssPath = path.join(scriptReportPath, 'css', 'styles.css');
   const jsPath = path.join(scriptReportPath, 'js', 'app.js');
-
   if (!fs.existsSync(htmlPath)) { return null; }
 
   let html = fs.readFileSync(htmlPath, 'utf-8');
-
-  // Force dark theme on the embedded report
   html = html.replace('data-theme="light"', 'data-theme="dark"');
-
-  // Inline CSS: replace <link rel="stylesheet" href="css/styles.css" /> with <style>...</style>
   if (fs.existsSync(cssPath)) {
-    const css = fs.readFileSync(cssPath, 'utf-8');
-    html = html.replace(
-      /<link[^>]*href=["']css\/styles\.css["'][^>]*\/?>/i,
-      `<style>${css}</style>`
-    );
+    html = html.replace(/<link[^>]*href=["']css\/styles\.css["'][^>]*\/?>/i,
+      `<style>${fs.readFileSync(cssPath, 'utf-8')}</style>`);
   }
-
-  // Inline JS: replace <script src="js/app.js"></script> with <script>...</script>
   if (fs.existsSync(jsPath)) {
-    const js = fs.readFileSync(jsPath, 'utf-8');
-    html = html.replace(
-      /<script[^>]*src=["']js\/app\.js["'][^>]*><\/script>/i,
-      `<script>${js}</script>`
-    );
+    html = html.replace(/<script[^>]*src=["']js\/app\.js["'][^>]*><\/script>/i,
+      `<script>${fs.readFileSync(jsPath, 'utf-8')}</script>`);
   }
-
-  // Remove the theme toggle button (since we force dark)
   html = html.replace(/<button[^>]*id=["']themeToggle["'][^>]*>[\s\S]*?<\/button>/i, '');
-
   return html;
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HTML BUILDER
-// ═══════════════════════════════════════════════════════════════════════════════
+// ─────────────────────────────────────────────────────────────────────────────
+// Fragments
+// ─────────────────────────────────────────────────────────────────────────────
+function metric(label: string, value: string, color = C.text): string {
+  return `<div class="metric">
+    <span class="metric-label">${escapeHtml(label)}</span>
+    <span class="metric-value" style="color:${color}">${value}</span>
+  </div>`;
+}
 
-function buildHtml(
-  result: ValidationResult,
-  scriptReportPath?: string
-): string {
-  const passed = result.status === 'PASSED';
-  const statusColorMain = passed ? '#00ff88' : '#ff4455';
-  const statusGlow = passed ? 'rgba(0, 255, 136, 0.4)' : 'rgba(255, 68, 85, 0.4)';
-  const statusIcon = passed ? svgCheckCircle(22, statusColorMain) : svgXCircle(22, statusColorMain);
-  const statusText = passed ? 'PASSED' : 'FAILED';
+function param(label: string, value: string, badge?: string): string {
+  return `<div class="param">
+    <span class="param-label">${escapeHtml(label)}${badge ? `<span class="param-badge">${escapeHtml(badge)}</span>` : ''}</span>
+    <span class="param-value">${escapeHtml(value)}</span>
+  </div>`;
+}
 
-  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? 'N/A';
-  const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
-  const totalDuration = formatDuration(result.total_duration_ms);
-  const now = new Date();
-  const runId = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+function stepRow(step: StepResult, index: number): string {
+  const failed = step.status === 'failed';
+  const skipped = step.status === 'skipped';
+  const glyph = failed ? '✕' : skipped ? '·' : '✔';
+  const color = failed ? C.fail : skipped ? C.dim : C.ok;
+  const nameColor = failed ? C.fail : skipped ? '#5b656b' : C.textSoft;
+  const duration = skipped || step.duration_ms === undefined ? '—' : formatDuration(step.duration_ms);
+  const phase = PHASES[step.name] ?? 'proceso';
 
-  // Detect branch from workspace folder name or git
-  const branchName = path.basename(workspacePath);
+  return `<div class="step-row"${failed ? ' data-failed="true"' : ''}>
+    <span class="step-num">#${String(index + 1).padStart(2, '0')}</span>
+    <span class="step-glyph" style="color:${color}">${glyph}</span>
+    <span class="step-name" style="color:${nameColor}" title="${escapeHtml(step.name)}">${escapeHtml(step.name)}</span>
+    <span class="step-phase">${escapeHtml(phase)}</span>
+    <span class="step-duration" style="color:${skipped ? C.dim : C.muted}">${duration}</span>
+  </div>`;
+}
 
-  // Build steps rows (terminal style)
-  const stepsHtml = result.steps.map((step, index) => {
-    const num = String(index + 1).padStart(2, ' ');
-    const stepPassed = step.status === 'passed';
-    const stepSkipped = step.status === 'skipped';
-    const icon = stepSkipped ? '⊘' : (stepPassed ? '✔' : '✘');
-    const iconClass = stepSkipped ? 'icon-skipped' : (stepPassed ? 'icon-passed' : 'icon-failed');
-    const duration = step.duration_ms !== undefined ? formatDuration(step.duration_ms) : '—';
-    const nameLen = step.name.length;
-    const dotsCount = Math.max(2, 36 - nameLen);
-    const dots = '.'.repeat(dotsCount);
+/** Full-width failure block: which step broke and the trace, unabridged. */
+function failureBlock(result: ValidationResult): string {
+  const idx = result.steps.findIndex(s => s.status === 'failed');
+  if (idx === -1) { return ''; }
+  const step = result.steps[idx];
+  const headline = step.errors?.[0]?.message ?? step.message ?? 'El paso terminó con error';
+  const trace = (step.message ?? step.errors?.map(e => e.message).join('\n') ?? '').trim();
 
-    let errorLine = '';
-    if (step.status === 'failed' && step.errors && step.errors.length > 0) {
-      const firstErr = step.errors[0];
-      errorLine = `<div class="step-error-line">     └─ ERROR: ${escapeHtml(firstErr.message.split('\n')[0].substring(0, 120))}</div>`;
-    } else if (step.status === 'failed' && step.message) {
-      // Only show first meaningful line, not entire Maven trace
-      const lines = step.message.split('\n').filter(l => l.trim().length > 0);
-      const summary = lines[0]?.substring(0, 120) || 'Step failed';
-      errorLine = `<div class="step-error-line">     └─ ${escapeHtml(summary)}</div>`;
+  return `<div class="failure">
+    <div class="failure-head">
+      <span class="failure-tag">#${String(idx + 1).padStart(2, '0')} FAILED</span>
+      <span class="failure-step">${escapeHtml(step.name)}</span>
+      <span class="failure-reason">${escapeHtml(headline.split('\n')[0].substring(0, 140))}</span>
+    </div>
+    ${trace ? `<pre class="failure-trace">${escapeHtml(trace)}</pre>` : ''}
+    <span class="failure-note">workspace retenido para inspección · nada se envió a remoto</span>
+  </div>`;
+}
+
+function artifactsCard(runDir?: string): string {
+  const files = ['report.json', 'execution.log', 'maven-output.log'];
+  const rows = files.map(name => {
+    const full = runDir ? path.join(runDir, name) : '';
+    let size = '—';
+    if (full && fs.existsSync(full)) {
+      try { size = formatBytes(fs.statSync(full).size); } catch { /* keep — */ }
     }
-
-    return `<div class="step-row">
-      <span class="step-content"><span class="${iconClass}">   ${icon}</span>  <span class="step-num">${num}</span>  <span class="step-name">${escapeHtml(step.name)}</span> <span class="step-dots">${dots}</span> <span class="step-duration">${duration}</span></span>${errorLine}
+    const exists = size !== '—';
+    return `<div class="artifact"${exists ? ` data-open="${escapeHtml(full)}"` : ' data-missing="true"'}>
+      <span>${name}</span><span class="artifact-size">${size}</span>
     </div>`;
-  }).join('\n');
+  }).join('');
 
-  // Embedded script report
-  let scriptReportContent = '<div class="no-report">No script report available for this run</div>';
+  return `<section class="card">
+    <header class="card-head"><span class="card-title">artefactos del run</span></header>
+    <div class="card-lead">
+      <span class="param-label">output-dir</span>
+      <span class="param-value dim">${escapeHtml(runDir ?? 'no disponible para este run')}</span>
+    </div>
+    <div class="artifacts">${rows}</div>
+  </section>`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HTML
+// ─────────────────────────────────────────────────────────────────────────────
+function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?: string): string {
+  const passed = result.status === 'PASSED';
+  const accent = passed ? C.ok : C.fail;
+  const meta = readReportMeta(runDir);
+  const cfg = vscode.workspace.getConfiguration('dbflowValidator');
+
+  const workspacePath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '—';
+  const branch = (meta.base_branch as string) ?? path.basename(workspacePath);
+  const repoUrl = (meta.repo_url as string) ?? '—';
+  const timestamp = (meta.timestamp as string)?.replace('T', ' ').substring(0, 19)
+    ?? new Date().toISOString().replace('T', ' ').substring(0, 19);
+  const runId = runDir ? path.basename(runDir) : timestamp.replace(/[: ]/g, '-');
+  const okCount = result.steps.filter(s => s.status === 'passed').length;
+  const workspaceState = passed ? 'eliminado' : 'retenido';
+
+  const stepsHtml = result.steps.map(stepRow).join('');
+  const summary = passed
+    ? `total ${formatDuration(result.total_duration_ms)} · ${result.steps.length} pasos`
+    : `total ${formatDuration(result.total_duration_ms)} · se detuvo en el paso #${String(result.steps.findIndex(s => s.status === 'failed') + 1).padStart(2, '0')}`;
+
+  let scriptReport = '<div class="empty">Este run no generó reporte de calidad</div>';
   if (scriptReportPath) {
     const embedded = buildEmbeddedScriptReport(scriptReportPath);
-    if (embedded) {
-      scriptReportContent = `<div class="script-report-frame">${embedded}</div>`;
-    }
+    if (embedded) { scriptReport = `<div class="script-report-frame">${embedded}</div>`; }
   }
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="es">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DBFlow Validation Report</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DBFlow Validation Report</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; background: ${C.bg}; color: ${C.text}; font-family: ${MONO}; font-size: 13px; line-height: 1.6; }
+  a { color: ${accent}; text-decoration: none; }
 
-    body {
-      font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
-      font-size: 13px;
-      background: #0f0f1a;
-      color: #e0e0e0;
-      padding: 0;
-      line-height: 1.6;
-      min-height: 100vh;
-    }
+  /* header */
+  .top { display: flex; align-items: flex-start; gap: 28px; padding: 30px 32px 24px; flex-wrap: wrap; }
+  .brand { display: flex; align-items: center; gap: 14px; flex-shrink: 0; }
+  .brand-name { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; white-space: nowrap; }
+  .brand-run { font-size: 12px; color: ${C.faint}; white-space: nowrap; }
+  .pill { font-size: 11px; color: ${C.faint}; border: 1px solid #2a3036; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
 
-    /* ═══════════════════════════════════════════════════════════════════════════
-       HEADER
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .header {
-      background: linear-gradient(135deg, #0a0a14 0%, #1a1a2e 50%, #0f1528 100%);
-      border-bottom: 1px solid rgba(0, 212, 255, 0.15);
-      padding: 28px 32px 20px;
-      position: relative;
-    }
+  .metrics { flex: 1 1 380px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: ${C.line}; border: 1px solid ${C.line}; border-radius: 10px; overflow: hidden; }
+  .metric { background: ${C.surface}; padding: 12px 16px; display: flex; flex-direction: column; gap: 4px; }
+  .metric-label { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: ${C.faint}; white-space: nowrap; }
+  .metric-value { font-size: 15px; white-space: nowrap; }
 
-    .header::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      height: 2px;
-      background: linear-gradient(90deg, transparent, ${statusColorMain}, transparent);
-    }
+  .verdict-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+  .verdict { display: flex; align-items: center; gap: 11px; padding: 12px 20px; border-radius: 10px;
+    background: ${passed ? 'rgba(79,224,166,0.10)' : 'rgba(242,85,95,0.10)'};
+    border: 1px solid ${passed ? 'rgba(79,224,166,0.45)' : 'rgba(242,85,95,0.45)'}; }
+  .verdict-glyph { font-size: 16px; color: ${accent}; }
+  .verdict-text { font-size: 18px; font-weight: 700; letter-spacing: 0.06em; color: ${accent}; }
+  .verdict-note { font-size: 11px; color: ${C.faint}; }
 
-    .header-content {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
+  /* tabs */
+  .tabs { display: flex; gap: 0; padding: 0 32px; border-bottom: 1px solid ${C.line}; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; color: ${C.faint};
+    font-family: inherit; font-size: 12px; letter-spacing: 0.04em; padding: 12px 16px; cursor: pointer; }
+  .tab:hover { color: ${C.text}; }
+  .tab.active { color: ${C.text}; border-bottom-color: ${accent}; }
+  .panel { display: none; }
+  .panel.active { display: block; }
 
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
+  /* layout */
+  .grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 22px; padding: 24px 32px 32px; align-items: start; }
+  @media (max-width: 1080px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .card { background: ${C.surface}; border: 1px solid ${C.line}; border-radius: 12px; overflow: hidden; }
+  .card + .card { margin-top: 22px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; border-bottom: 1px solid ${C.line}; }
+  .card-title { font-size: 11.5px; letter-spacing: 0.16em; text-transform: uppercase; color: ${C.text}; }
+  .card-meta { font-size: 10.5px; color: ${C.faint}; white-space: nowrap; }
+  .count { font-size: 11px; font-weight: 700; color: ${C.bg}; background: ${accent}; border-radius: 4px; padding: 2px 7px; }
 
-    .brand-logo {
-      display: flex;
-      align-items: center;
-    }
+  /* steps */
+  .step-row { display: grid; grid-template-columns: 40px 16px minmax(0, 1fr) 120px 78px; align-items: center; gap: 14px;
+    padding: 0 20px; height: 44px; border-bottom: 1px solid ${C.lineSoft}; }
+  .step-row:hover { background: #131a1e; }
+  .step-row[data-failed] { background: rgba(242,85,95,0.07); }
+  .step-num { font-size: 11px; color: ${C.dim}; }
+  .step-glyph { font-size: 13px; text-align: center; }
+  .step-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step-phase { font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: ${C.dim}; white-space: nowrap; }
+  .step-duration { font-size: 12px; text-align: right; }
+  .steps-foot { display: flex; align-items: center; gap: 20px; padding: 14px 20px; background: ${C.surfaceAlt}; font-size: 11px; color: ${C.faint}; }
 
-    .brand-text {
-      display: flex;
-      align-items: baseline;
-      gap: 10px;
-    }
+  /* failure */
+  .failure { display: flex; flex-direction: column; gap: 12px; padding: 20px; background: rgba(242,85,95,0.06); border-top: 1px solid rgba(242,85,95,0.3); }
+  .failure-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .failure-tag { font-size: 11px; font-weight: 700; color: ${C.bg}; background: ${C.fail}; border-radius: 4px; padding: 2px 7px; }
+  .failure-step { font-size: 13px; color: ${C.fail}; }
+  .failure-reason { font-size: 11px; color: ${C.muted}; }
+  .failure-trace { margin: 0; font-family: ${MONO}; font-size: 12px; line-height: 1.8; color: #c8d0d3;
+    background: ${C.bg}; border: 1px solid #22282d; border-radius: 8px; padding: 14px 16px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+  .failure-note { font-size: 11px; color: ${C.faint}; }
 
-    .brand-name {
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      color: #ffffff;
-    }
+  /* parametría */
+  .param { display: flex; flex-direction: column; gap: 4px; padding: 12px 20px; border-bottom: 1px solid ${C.lineSoft}; }
+  .param-label { display: flex; align-items: center; gap: 8px; font-size: 10.5px; color: ${C.faint}; }
+  .param-badge { font-size: 9.5px; color: ${accent}; border: 1px solid ${passed ? 'rgba(79,224,166,0.35)' : 'rgba(242,85,95,0.35)'}; border-radius: 3px; padding: 1px 5px; }
+  .param-value { font-size: 12px; color: ${C.textSoft}; word-break: break-all; }
+  .param-value.dim { color: ${C.muted}; font-size: 11.5px; }
+  .param-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: ${C.lineSoft}; }
+  .param-pair .param { background: ${C.surface}; border-bottom: none; }
+  .secret { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; background: ${C.surfaceAlt}; }
+  .secret-dots { font-size: 12.5px; color: ${C.muted}; letter-spacing: 0.18em; }
 
-    .brand-version {
-      font-size: 10px;
-      color: #00d4ff;
-      background: rgba(0, 212, 255, 0.1);
-      padding: 2px 8px;
-      border-radius: 3px;
-      border: 1px solid rgba(0, 212, 255, 0.3);
-    }
+  /* artifacts */
+  .card-lead { display: flex; flex-direction: column; gap: 4px; padding: 13px 20px 8px; }
+  .artifacts { display: flex; flex-direction: column; padding: 4px 8px 12px; }
+  .artifact { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 8px; font-size: 12.5px; color: ${C.textSoft}; cursor: pointer; }
+  .artifact:hover { background: #151b20; color: ${accent}; }
+  .artifact[data-missing] { color: ${C.dim}; cursor: default; }
+  .artifact[data-missing]:hover { background: none; color: ${C.dim}; }
+  .artifact-size { font-size: 11px; color: #5f6a70; }
 
-    .status-badge {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 24px;
-      border-radius: 6px;
-      background: rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.08);
-      border: 1px solid ${statusColorMain};
-      box-shadow: 0 0 20px ${statusGlow}, inset 0 0 15px rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.05);
-      animation: statusPulse 3s ease-in-out infinite;
-    }
+  /* footer + signature */
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px 24px; border-top: 1px solid #1a1f24; background: ${C.chrome}; flex-wrap: wrap; }
+  .foot-meta { font-size: 11px; color: ${C.dim}; }
+  .sign { display: flex; align-items: center; gap: 13px; }
+  .sign-mark { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid #2a3036; background: ${C.bg}; font-size: 11px; font-weight: 700; color: ${C.ok}; }
+  .sign-name { font-size: 12.5px; font-weight: 500; color: ${C.textSoft}; white-space: nowrap; }
+  .sign-role { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: ${C.faint}; white-space: nowrap; }
 
-    @keyframes statusPulse {
-      0%, 100% { box-shadow: 0 0 20px ${statusGlow}; }
-      50% { box-shadow: 0 0 35px ${statusGlow}; }
-    }
+  .empty { padding: 60px 32px; text-align: center; color: ${C.faint}; }
+  .script-report-frame { all: initial; display: block; width: 100%; min-height: 400px; font-family: sans-serif; color-scheme: dark; }
+  .script-report-frame * { all: revert; }
 
-    .status-badge-icon {
-      display: flex;
-      align-items: center;
-    }
-
-    .status-badge-text {
-      font-size: 16px;
-      font-weight: 700;
-      color: ${statusColorMain};
-      letter-spacing: 2px;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       INFO BAR
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .info-bar {
-      background: rgba(15, 15, 26, 0.8);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      padding: 10px 32px;
-      display: flex;
-      align-items: center;
-      gap: 24px;
-      font-size: 12px;
-    }
-
-    .info-item {
-      display: flex;
-      align-items: center;
-      gap: 7px;
-    }
-
-    .info-item svg {
-      flex-shrink: 0;
-    }
-
-    .info-value {
-      color: #00d4ff;
-    }
-
-    .info-separator {
-      color: rgba(255, 255, 255, 0.15);
-      user-select: none;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       TABS
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .tabs-bar {
-      background: #1a1a2e;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-      padding: 0 32px;
-      display: flex;
-      gap: 0;
-    }
-
-    .tab-btn {
-      background: none;
-      border: none;
-      color: #666680;
-      font-family: inherit;
-      font-size: 12px;
-      font-weight: 500;
-      padding: 12px 20px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s ease;
-      letter-spacing: 0.5px;
-    }
-
-    .tab-btn:hover {
-      color: #e0e0e0;
-      background: rgba(0, 212, 255, 0.03);
-    }
-
-    .tab-btn.active {
-      color: #00d4ff;
-      border-bottom-color: #00d4ff;
-    }
-
-    .tab-content {
-      display: none;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       TAB 1: PIPELINE
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .pipeline-content {
-      padding: 24px 32px;
-    }
-
-    .steps-header-line {
-      color: #666680;
-      font-size: 11px;
-      letter-spacing: -0.5px;
-      user-select: none;
-      margin-bottom: 8px;
-      overflow: hidden;
-    }
-
-    .step-row {
-      padding: 4px 0;
-      transition: background 0.15s ease;
-      border-radius: 3px;
-    }
-
-    .step-row:hover {
-      background: rgba(0, 212, 255, 0.04);
-    }
-
-    .step-content {
-      display: inline;
-      white-space: pre;
-    }
-
-    .icon-passed { color: #00ff88; }
-    .icon-failed { color: #ff4455; }
-    .icon-skipped { color: #666680; }
-
-    .step-num { color: #888; font-weight: 600; }
-    .step-name { color: #ffffff; font-weight: 500; }
-    .step-dots { color: #2a2a3e; }
-    .step-duration { color: #00d4ff; font-weight: 500; }
-
-    .step-error-line {
-      color: #ff4455;
-      font-size: 12px;
-      padding: 2px 0 6px 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .steps-footer-line {
-      color: #666680;
-      font-size: 11px;
-      letter-spacing: -0.5px;
-      user-select: none;
-      margin-top: 8px;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       RESULT BANNER
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .result-banner {
-      margin: 24px 0 0;
-      padding: 18px 24px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 16px;
-      background: linear-gradient(90deg, rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.12), rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.04));
-      border: 1px solid rgba(${passed ? '0, 255, 136' : '255, 68, 85'}, 0.3);
-    }
-
-    .result-text {
-      font-size: 15px;
-      font-weight: 700;
-      color: ${statusColorMain};
-      letter-spacing: 2px;
-    }
-
-    .result-duration {
-      color: #666680;
-      font-size: 13px;
-      margin-left: 16px;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       FOOTER
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .footer {
-      margin-top: 32px;
-      padding: 14px 32px;
-      border-top: 1px solid rgba(255, 255, 255, 0.06);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      font-size: 11px;
-      color: #3d4663;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       TAB 2: SCRIPT REPORT
-       ═══════════════════════════════════════════════════════════════════════════ */
-    .script-report-frame {
-      all: initial;
-      display: block;
-      width: 100%;
-      min-height: 400px;
-      font-family: sans-serif;
-      color-scheme: dark;
-    }
-
-    .script-report-frame * {
-      all: revert;
-    }
-
-    /* Force dark theme on the embedded script-report */
-    .script-report-frame [data-theme],
-    .script-report-frame html {
-      color-scheme: dark !important;
-    }
-
-    .no-report {
-      padding: 60px 32px;
-      text-align: center;
-      color: #666680;
-      font-size: 14px;
-    }
-
-    .no-report::before {
-      content: '📊';
-      display: block;
-      font-size: 48px;
-      margin-bottom: 16px;
-      opacity: 0.4;
-    }
-
-    /* ═══════════════════════════════════════════════════════════════════════════
-       SCROLLBAR
-       ═══════════════════════════════════════════════════════════════════════════ */
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
-    ::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
-    ::-webkit-scrollbar-thumb { background: rgba(0, 212, 255, 0.2); border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: rgba(0, 212, 255, 0.4); }
-  </style>
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #22282d; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2f373d; }
+</style>
 </head>
 <body>
-  <!-- ═══ HEADER ═══ -->
-  <div class="header">
-    <div class="header-content">
-      <div class="brand">
-        <div class="brand-logo">${svgDatabase(28, '#00d4ff')}</div>
-        <div class="brand-text">
-          <span class="brand-name">DBFLOW VALIDATOR</span>
-          <span class="brand-version">v0.3.2</span>
+  <div class="top">
+    <div class="brand">
+      ${svgBrand(42, C.ok)}
+      <div>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span class="brand-name">dbflow-validator</span>
+          <span class="pill">v0.3.2</span>
         </div>
+        <div class="brand-run">run ${escapeHtml(runId)}</div>
       </div>
-      <div class="status-badge">
-        <span class="status-badge-icon">${statusIcon}</span>
-        <span class="status-badge-text">${statusText}</span>
+    </div>
+
+    <div class="metrics">
+      ${metric('duración', formatDuration(result.total_duration_ms))}
+      ${metric('pasos', `${okCount}<span style="color:${C.faint};font-size:12px">/${result.steps.length}</span>`, accent)}
+      ${metric('rama base', escapeHtml(branch))}
+      ${metric('workspace', workspaceState, passed ? C.text : C.fail)}
+    </div>
+
+    <div class="verdict-wrap">
+      <div class="verdict">
+        <span class="verdict-glyph">${passed ? '✔' : '✕'}</span>
+        <span class="verdict-text">${result.status}</span>
+      </div>
+      <span class="verdict-note">${passed ? 'sin cambios enviados a remoto' : 'nada se envió a remoto'}</span>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="pipeline">Pipeline</button>
+    <button class="tab" data-tab="quality">Reporte de calidad</button>
+  </div>
+
+  <div class="panel active" id="tab-pipeline">
+    <div class="grid">
+      <section class="card">
+        <header class="card-head">
+          <span style="display:flex;align-items:center;gap:10px;">
+            <span class="card-title">validation steps</span>
+            <span class="count">${result.steps.length}</span>
+          </span>
+          <span class="card-meta">ordenado por ejecución</span>
+        </header>
+        ${stepsHtml}
+        ${failureBlock(result)}
+        <div class="steps-foot"><span>${escapeHtml(summary)}</span></div>
+      </section>
+
+      <div>
+        <section class="card">
+          <header class="card-head">
+            <span class="card-title">parametría</span>
+            <span class="card-meta">flags &gt; env &gt; prompt</span>
+          </header>
+          ${param('repo-url', repoUrl, repoUrl !== '—' ? 'auto' : undefined)}
+          <div class="param-pair">
+            ${param('base-branch', branch)}
+            ${param('log-level', cfg.get<string>('logLevel') ?? 'error')}
+            ${param('output-format', 'json')}
+            ${param('keep-workspace', passed ? 'false' : 'true')}
+          </div>
+          ${param('workspace', workspacePath)}
+          ${param('postgres-image', cfg.get<string>('postgresImage') ?? 'default (dbflow-postgres-partman)')}
+          <div class="secret">
+            <span style="display:flex;flex-direction:column;gap:4px;">
+              <span class="param-label">git-token</span>
+              <span class="secret-dots">••••••••••••</span>
+            </span>
+            <span class="pill">nunca en disco</span>
+          </div>
+        </section>
+
+        ${artifactsCard(runDir)}
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="foot-meta">${escapeHtml(timestamp)} · reporte generado localmente</span>
+      <div class="sign">
+        <span class="sign-mark">JR</span>
+        <span style="display:flex;flex-direction:column;gap:2px;">
+          <span class="sign-name">Juanpa Reyest</span>
+          <span class="sign-role">Development Engineer</span>
+        </span>
       </div>
     </div>
   </div>
 
-  <!-- ═══ INFO BAR ═══ -->
-  <div class="info-bar">
-    <div class="info-item">${svgCalendar(14, '#666680')}<span class="info-value">RUN ${runId}</span></div>
-    <span class="info-separator">·</span>
-    <div class="info-item">${svgClock(14, '#666680')}<span class="info-value">${totalDuration}</span></div>
-    <span class="info-separator">·</span>
-    <div class="info-item">${svgGitBranch(14, '#666680')}<span class="info-value">${escapeHtml(branchName)}</span></div>
-    <span class="info-separator">·</span>
-    <div class="info-item">${svgLayers(14, '#666680')}<span class="info-value">${result.steps.length} steps</span></div>
-  </div>
+  <div class="panel" id="tab-quality">${scriptReport}</div>
 
-  <!-- ═══ TABS ═══ -->
-  <div class="tabs-bar">
-    <button class="tab-btn active" data-tab="pipeline">🛠️ Pipeline</button>
-    <button class="tab-btn" data-tab="quality-report">📊 Quality Report</button>
-  </div>
-
-  <!-- ═══ TAB 1: PIPELINE ═══ -->
-  <div class="tab-content active" id="tab-pipeline">
-    <div class="pipeline-content">
-      <div class="steps-header-line">────────────────────────────────────────────────────────────────</div>
-      ${stepsHtml}
-      <div class="steps-footer-line">────────────────────────────────────────────────────────────────</div>
-
-      <div class="result-banner">
-        <span class="result-text">RESULT  ${passed ? '✔' : '✘'}  ${statusText}</span>
-        <span class="result-duration">total ${totalDuration}</span>
-      </div>
-    </div>
-
-    <!-- FOOTER -->
-    <div class="footer">
-      <span>${timestamp}</span>
-      <span>${escapeHtml(workspacePath)}</span>
-    </div>
-  </div>
-
-  <!-- ═══ TAB 2: QUALITY REPORT ═══ -->
-  <div class="tab-content" id="tab-quality-report">
-    ${scriptReportContent}
-  </div>
-
-  <!-- ═══ TAB SWITCHING SCRIPT ═══ -->
   <script>
-    (function() {
-      const tabs = document.querySelectorAll('.tab-btn');
-      const contents = document.querySelectorAll('.tab-content');
+    (function () {
+      const vscodeApi = typeof acquireVsCodeApi === 'function' ? acquireVsCodeApi() : null;
 
-      tabs.forEach(function(tab) {
-        tab.addEventListener('click', function() {
-          const target = this.getAttribute('data-tab');
+      document.querySelectorAll('.tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          document.querySelectorAll('.tab').forEach(function (t) { t.classList.remove('active'); });
+          document.querySelectorAll('.panel').forEach(function (p) { p.classList.remove('active'); });
+          tab.classList.add('active');
+          const target = document.getElementById('tab-' + tab.getAttribute('data-tab'));
+          if (target) { target.classList.add('active'); }
+        });
+      });
 
-          tabs.forEach(function(t) { t.classList.remove('active'); });
-          contents.forEach(function(c) { c.classList.remove('active'); });
-
-          this.classList.add('active');
-          var targetEl = document.getElementById('tab-' + target);
-          if (targetEl) { targetEl.classList.add('active'); }
+      document.querySelectorAll('.artifact[data-open]').forEach(function (el) {
+        el.addEventListener('click', function () {
+          if (vscodeApi) { vscodeApi.postMessage({ command: 'openFile', path: el.getAttribute('data-open') }); }
         });
       });
     })();
