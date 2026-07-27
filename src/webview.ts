@@ -198,32 +198,46 @@ function failureBlock(result: ValidationResult): string {
   if (idx === -1) { return ''; }
   const step = result.steps[idx];
   
-  // Build the trace content — show the full error, not truncated
-  const rawTrace = step.message ?? step.errors?.map(e => e.message).join('\n') ?? '';
+  // The CLI report.json uses: step.error (string) and step.trace (full stdout/stderr)
+  // The normalized result from runner.ts uses: step.message (mapped from trace) and step.errors (array)
+  // Handle both formats:
+  const rawStep = step as unknown as Record<string, unknown>;
+  const errorField = (rawStep.error as string) ?? '';
+  const traceField = (rawStep.trace as string) ?? step.message ?? '';
+  const errorsArray = step.errors;
   
-  // Extract a short headline for the header line (first meaningful short bit)
-  const firstLine = rawTrace.split('\n').find(l => l.trim().length > 0) ?? 'El paso terminó con error';
-  const headline = firstLine.length > 80 ? firstLine.substring(0, 80) + '…' : firstLine;
+  // Headline: use step.error if available, otherwise first error message, otherwise generic
+  const headline = errorField 
+    || errorsArray?.[0]?.message?.split('\n')[0]
+    || traceField.split('\n').find(l => l.includes('ERROR') || l.includes('error'))?.trim()
+    || 'El paso terminó con error';
 
-  // For the full trace block, show everything but skip extremely long Maven output
-  // Only show the first 60 lines max to avoid overwhelming, but keep it readable
-  const traceLines = rawTrace.split('\n');
-  const displayTrace = traceLines.length > 60
-    ? traceLines.slice(0, 60).join('\n') + `\n\n… (${traceLines.length - 60} líneas más en execution.log)`
-    : rawTrace;
+  // Trace: extract the meaningful error lines from the full trace
+  // Look for lines containing ERROR, Reason:, SQL:, Hint: and surrounding context
+  const allLines = traceField.split('\n');
+  const errorLines = allLines.filter(l => 
+    /ERROR|Reason:|SQL:|Hint:|FAILED|Exception|caused by/i.test(l) && 
+    !l.includes('[INFO]')
+  );
+  
+  // Show the extracted error lines if we found meaningful ones, otherwise first 30 lines
+  const displayTrace = errorLines.length > 0 
+    ? errorLines.slice(0, 20).join('\n')
+    : allLines.slice(0, 30).join('\n');
 
   // Check if rollback ran or was skipped
   const rollbackStep = result.steps.find(s => s.name.includes('rollback'));
   const rollbackSkipped = rollbackStep && rollbackStep.status.toLowerCase() !== 'passed';
+  const runDirFromTrace = traceField.match(/dbflow-validator-runs\/[\w\-]+/)?.[0] ?? '';
   const rollbackNote = rollbackSkipped
-    ? 'rollback no se ejecutó · workspace retenido'
+    ? `rollback no se ejecutó · workspace retenido${runDirFromTrace ? ' en ' + runDirFromTrace + '/workspace/' : ''}`
     : 'rollback ejecutado · workspace retenido para inspección';
 
   return `<div class="failure">
     <div class="failure-head">
       <span class="failure-tag">#${String(idx + 1).padStart(2, '0')} FAILED</span>
       <span class="failure-step">${escapeHtml(step.name)}</span>
-      <span class="failure-reason">${escapeHtml(headline)}</span>
+      <span class="failure-reason">${escapeHtml(headline.substring(0, 100))}</span>
     </div>
     ${displayTrace.trim() ? `<pre class="failure-trace">${escapeHtml(displayTrace.trim())}</pre>` : ''}
     <span class="failure-note">${escapeHtml(rollbackNote)}</span>
@@ -282,7 +296,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
     const embedded = buildEmbeddedScriptReport(scriptReportPath);
     if (embedded) {
       const encodedHtml = escapeHtml(embedded);
-      scriptReport = `<div class="script-report-frame"><iframe srcdoc="${encodedHtml}" style="width:100%;min-height:700px;border:none;background:transparent;" sandbox="allow-scripts"></iframe></div>`;
+      scriptReport = `<div class="script-report-frame"><iframe srcdoc="${encodedHtml}" style="width:100%;min-height:700px;border:none;background:transparent;" sandbox="allow-scripts allow-same-origin"></iframe></div>`;
     }
   }
 
@@ -389,7 +403,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   .artifact-size { font-size: 11px; color: #5f6a70; }
 
   /* footer + signature */
-  .foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px 24px; border-top: 1px solid #1a1f24; background: ${C.chrome}; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 10; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px 24px; border-top: 1px solid #1a1f24; background: ${C.chrome}; flex-wrap: wrap; }
   .foot-meta { font-size: 11px; color: ${C.dim}; }
   .sign { display: flex; align-items: center; gap: 13px; }
   .sign-mark { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid #2a3036; background: ${C.bg}; font-size: 11px; font-weight: 700; color: ${C.ok}; }
