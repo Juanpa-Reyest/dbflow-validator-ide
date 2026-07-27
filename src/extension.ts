@@ -121,7 +121,7 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
 
             // Open WebView with results
             if (runResult.result) {
-              showValidationReport(context, runResult.result, scriptReportPath);
+              showValidationReport(context, runResult.result, scriptReportPath, runResult.runDir);
             }
             break;
 
@@ -143,7 +143,7 @@ async function executeValidation(context: vscode.ExtensionContext): Promise<void
               outputChannel.appendLine(`Result: FAILED - ${runResult.result.summary}`);
 
               // Open WebView with results
-              showValidationReport(context, runResult.result, scriptReportPath);
+              showValidationReport(context, runResult.result, scriptReportPath, runResult.runDir);
 
               // Automatically show the output channel so the dev sees the details
               outputChannel.show(true);
