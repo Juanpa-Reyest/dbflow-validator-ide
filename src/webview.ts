@@ -174,8 +174,9 @@ function param(label: string, value: string, badge?: string): string {
 }
 
 function stepRow(step: StepResult, index: number): string {
-  const failed = step.status === 'failed';
-  const skipped = step.status === 'skipped';
+  const status = step.status.toLowerCase();
+  const failed = status === 'failed';
+  const skipped = status === 'skipped';
   const glyph = failed ? '✕' : skipped ? '·' : '✔';
   const color = failed ? C.fail : skipped ? C.dim : C.ok;
   const nameColor = failed ? C.fail : skipped ? '#5b656b' : C.textSoft;
@@ -193,7 +194,7 @@ function stepRow(step: StepResult, index: number): string {
 
 /** Full-width failure block: which step broke and the trace, unabridged. */
 function failureBlock(result: ValidationResult): string {
-  const idx = result.steps.findIndex(s => s.status === 'failed');
+  const idx = result.steps.findIndex(s => s.status.toLowerCase() === 'failed');
   if (idx === -1) { return ''; }
   const step = result.steps[idx];
   const headline = step.errors?.[0]?.message ?? step.message ?? 'El paso terminó con error';
@@ -249,13 +250,13 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   const timestamp = (meta.timestamp as string)?.replace('T', ' ').substring(0, 19)
     ?? new Date().toISOString().replace('T', ' ').substring(0, 19);
   const runId = runDir ? path.basename(runDir) : timestamp.replace(/[: ]/g, '-');
-  const okCount = result.steps.filter(s => s.status === 'passed').length;
+  const okCount = result.steps.filter(s => s.status.toLowerCase() === 'passed').length;
   const workspaceState = passed ? 'eliminado' : 'retenido';
 
   const stepsHtml = result.steps.map(stepRow).join('');
   const summary = passed
     ? `total ${formatDuration(result.total_duration_ms)} · ${result.steps.length} pasos`
-    : `total ${formatDuration(result.total_duration_ms)} · se detuvo en el paso #${String(result.steps.findIndex(s => s.status === 'failed') + 1).padStart(2, '0')}`;
+    : `total ${formatDuration(result.total_duration_ms)} · se detuvo en el paso #${String(result.steps.findIndex(s => s.status.toLowerCase() === 'failed') + 1).padStart(2, '0')}`;
 
   let scriptReport = '<div class="empty">Este run no generó reporte de calidad</div>';
   if (scriptReportPath) {
@@ -306,6 +307,16 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   /* layout */
   .grid { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 22px; padding: 24px 32px 32px; align-items: start; }
   @media (max-width: 1080px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 900px) {
+    .top { flex-direction: column; gap: 16px; padding: 20px 16px 16px; }
+    .metrics { grid-template-columns: repeat(2, 1fr); flex: none; }
+    .verdict-wrap { align-items: flex-start; }
+    .grid { padding: 16px; }
+    .foot { flex-direction: column; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+    .tabs { padding: 0 16px; }
+    .step-row { grid-template-columns: 32px 14px minmax(0, 1fr) 60px; gap: 8px; padding: 0 12px; }
+    .step-phase { display: none; }
+  }
   .card { background: ${C.surface}; border: 1px solid ${C.line}; border-radius: 12px; overflow: hidden; }
   .card + .card { margin-top: 22px; }
   .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 20px; border-bottom: 1px solid ${C.line}; }
