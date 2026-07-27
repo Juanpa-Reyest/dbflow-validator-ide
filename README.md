@@ -1,57 +1,73 @@
-# DBFlow Validator — VS Code Extension
+# DBFlow Validator
 
-Zero-config local validation of PostgreSQL database changes before opening a PR.
+**Validate your PostgreSQL database changes locally before opening a PR.** One click, zero config.
 
-## What it does
+DBFlow Validator spins up a real ephemeral PostgreSQL instance via Docker, applies your migrations (Liquibase), runs sync + rollback, and reports exactly what broke — all without touching shared environments.
 
-DBFlow Validator runs your database migration scripts against a real ephemeral PostgreSQL container (via Docker) and reports any issues directly in VS Code — with inline squiggly underlines on the problematic files and lines.
+---
 
-- ✅ Validates SQL syntax
-- ✅ Applies migrations to a fresh Postgres instance
-- ✅ Reports schema conflicts and errors
-- ✅ Shows results as VS Code Diagnostics (Problems panel)
+## ⚡ How it works
 
-## Requirements
-
-- **Docker** installed and running (the CLI spins up a temporary PostgreSQL container)
-- No other setup needed — the extension auto-downloads the CLI binary from GitHub Releases if not found in PATH
-
-## How to use
-
-1. Install the extension from the VS Code Marketplace (or from `.vsix`).
-2. Open a workspace containing your database migration files.
-3. Run the command **DBFlow: Validate DB Changes** from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
-4. Alternatively, click the **DBFlow: Validate** button in the status bar.
-5. View results in:
-   - The **Problems** panel (errors/warnings mapped to files)
-   - The **DBFlow Validator** output channel (detailed logs)
-
-## Settings
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `dbflowValidator.binaryPath` | Override path to the `dbflow-validator` binary. If empty, the extension searches PATH or downloads automatically. | `""` |
-| `dbflowValidator.postgresImage` | Override the PostgreSQL Docker image used for validation (e.g., `postgres:16`). | `""` |
-
-## Development
-
-```bash
-# Install dependencies
-npm install
-
-# Compile
-npm run compile
-
-# Watch mode
-npm run watch
-
-# Run tests
-npm test
-
-# Package as .vsix
-npx @vscode/vsce package
+```
+Your SQL changes → Docker PostgreSQL → Liquibase sync & rollback → ✅ or ❌
 ```
 
-## License
+1. Click **▶** in the editor title bar (or `Ctrl+Alt+V`)
+2. The extension runs the full validation pipeline in seconds
+3. See results in a rich WebView with:
+   - **Pipeline tab** — step-by-step execution with failure traces
+   - **Quality Report tab** — detailed script analysis (HTML report)
 
-MIT
+No database credentials. No shared environments. No broken PRs.
+
+---
+
+## ✨ Features
+
+| | |
+|---|---|
+| 🔌 **Zero config** | Install → click → result. Auto-downloads the CLI binary. |
+| 🐘 **Real PostgreSQL** | Validates against a real Postgres 17 instance, not a mock. |
+| 📊 **Rich reports** | WebView with pipeline steps, quality metrics, and artifacts. |
+| 🔄 **Sync + Rollback** | Tests both directions — if rollback fails, you'll know before the PR. |
+| 📜 **Execution history** | Sidebar with past runs for quick comparison. |
+| ⌨️ **Multiple triggers** | Button, keybinding (`Ctrl+Alt+V`), or Command Palette. |
+
+---
+
+## 📋 Requirements
+
+- **Docker** running (the CLI handles everything else)
+- A workspace with Liquibase-based database changelogs
+
+That's it. No Java, no Maven, no manual setup.
+
+---
+
+## 🚀 Getting started
+
+1. Install the extension
+2. Open your database project in VS Code
+3. Press `Ctrl+Alt+V` (or click ▶ in the title bar)
+4. Wait for the pipeline to complete (~30-60s first run, faster after)
+5. Review results in the WebView panel
+
+---
+
+## ⚙️ Settings
+
+| Setting | Description |
+|---------|-------------|
+| `dbflowValidator.binaryPath` | Custom path to the CLI binary (leave empty for auto-download) |
+| `dbflowValidator.postgresImage` | Custom PostgreSQL Docker image (default: `postgres-partman:17.7`) |
+
+---
+
+## 📎 Links
+
+- [CLI Repository](https://github.com/Juanpa-Reyest/dbflow-validator) — the engine behind the extension
+- [Report an issue](https://github.com/Juanpa-Reyest/dbflow-validator-ide/issues)
+
+---
+
+*Built for teams that ship database changes with confidence.*

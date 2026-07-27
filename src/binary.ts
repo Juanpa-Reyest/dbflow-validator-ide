@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as https from 'https';
 import { execSync } from 'child_process';
 
-const CLI_VERSION = 'v0.3.2';
+const CLI_VERSION = 'v0.3.3';
 const GITHUB_REPO = 'Juanpa-Reyest/dbflow-validator';
 const BINARY_NAME = 'dbflow-validator';
 
