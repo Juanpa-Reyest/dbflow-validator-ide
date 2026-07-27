@@ -296,7 +296,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
     const embedded = buildEmbeddedScriptReport(scriptReportPath);
     if (embedded) {
       const encodedHtml = escapeHtml(embedded);
-      scriptReport = `<div class="script-report-frame"><iframe srcdoc="${encodedHtml}" style="width:100%;min-height:700px;border:none;background:transparent;" sandbox="allow-scripts allow-same-origin"></iframe></div>`;
+      scriptReport = `<div class="script-report-frame"><iframe srcdoc="${encodedHtml}" style="width:100%;height:calc(100vh - 200px);min-height:800px;border:none;background:transparent;" sandbox="allow-scripts allow-same-origin"></iframe></div>`;
     }
   }
 
@@ -483,7 +483,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
             ${param('retener workspace', passed ? 'false' : 'true')}
           </div>
           ${param('workspace', workspacePath)}
-          ${param('imagen postgres', cfg.get<string>('postgresImage') ?? 'ghcr.io/juanpa-reyest/dbflow-postgres-partman:17.7')}
+          ${param('imagen postgres', cfg.get<string>('postgresImage') || 'ghcr.io/juanpa-reyest/dbflow-postgres-partman:17.7')}
         </section>
 
         ${artifactsCard(runDir)}
