@@ -259,7 +259,7 @@ function artifactsCard(runDir?: string): string {
   }).join('');
 
   return `<section class="card">
-    <header class="card-head"><span class="card-title">artefactos del run</span></header>
+    <header class="card-head"><span class="card-title">artefactos</span></header>
     <div class="card-lead">
       <span class="param-label">output-dir</span>
       <span class="param-value dim">${escapeHtml(runDir ?? 'no disponible para este run')}</span>
@@ -436,7 +436,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
     <div class="metrics">
       ${metric('duración', formatDuration(result.total_duration_ms))}
       ${metric('pasos', `${okCount}<span style="color:${C.faint};font-size:12px">/${result.steps.length}</span>`, accent)}
-      ${metric('rama base', escapeHtml(branch))}
+      ${metric('rama', escapeHtml(branch))}
       ${metric('workspace', workspaceState, passed ? C.text : C.fail)}
     </div>
 
@@ -459,10 +459,10 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
       <section class="card">
         <header class="card-head">
           <span style="display:flex;align-items:center;gap:10px;">
-            <span class="card-title">validation steps</span>
+            <span class="card-title">pasos de validación</span>
             <span class="count">${result.steps.length}</span>
           </span>
-          <span class="card-meta">ordenado por ejecución</span>
+          <span class="card-meta">orden de ejecución</span>
         </header>
         ${stepsHtml}
         ${failureBlock(result)}
@@ -472,25 +472,18 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
       <div>
         <section class="card">
           <header class="card-head">
-            <span class="card-title">parametría</span>
-            <span class="card-meta">flags &gt; env &gt; prompt</span>
+            <span class="card-title">configuración</span>
+            <span class="card-meta">flags → env → auto-detect</span>
           </header>
-          ${param('repo-url', repoUrl, repoUrl !== '—' ? 'auto' : undefined)}
+          ${param('repositorio', repoUrl, repoUrl !== '—' ? 'auto' : undefined)}
           <div class="param-pair">
-            ${param('base-branch', branch)}
+            ${param('rama base', branch)}
             ${param('log-level', cfg.get<string>('logLevel') ?? 'error')}
-            ${param('output-format', 'json')}
-            ${param('keep-workspace', passed ? 'false' : 'true')}
+            ${param('formato salida', 'json')}
+            ${param('retener workspace', passed ? 'false' : 'true')}
           </div>
           ${param('workspace', workspacePath)}
-          ${param('postgres-image', cfg.get<string>('postgresImage') ?? 'default (dbflow-postgres-partman)')}
-          <div class="secret">
-            <span style="display:flex;flex-direction:column;gap:4px;">
-              <span class="param-label">git-token</span>
-              <span class="secret-dots">••••••••••••</span>
-            </span>
-            <span class="pill">nunca en disco</span>
-          </div>
+          ${param('imagen postgres', cfg.get<string>('postgresImage') ?? 'ghcr.io/juanpa-reyest/dbflow-postgres-partman:17.7')}
         </section>
 
         ${artifactsCard(runDir)}
