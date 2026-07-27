@@ -197,17 +197,36 @@ function failureBlock(result: ValidationResult): string {
   const idx = result.steps.findIndex(s => s.status.toLowerCase() === 'failed');
   if (idx === -1) { return ''; }
   const step = result.steps[idx];
-  const headline = step.errors?.[0]?.message ?? step.message ?? 'El paso terminó con error';
-  const trace = (step.message ?? step.errors?.map(e => e.message).join('\n') ?? '').trim();
+  
+  // Build the trace content — show the full error, not truncated
+  const rawTrace = step.message ?? step.errors?.map(e => e.message).join('\n') ?? '';
+  
+  // Extract a short headline for the header line (first meaningful short bit)
+  const firstLine = rawTrace.split('\n').find(l => l.trim().length > 0) ?? 'El paso terminó con error';
+  const headline = firstLine.length > 80 ? firstLine.substring(0, 80) + '…' : firstLine;
+
+  // For the full trace block, show everything but skip extremely long Maven output
+  // Only show the first 60 lines max to avoid overwhelming, but keep it readable
+  const traceLines = rawTrace.split('\n');
+  const displayTrace = traceLines.length > 60
+    ? traceLines.slice(0, 60).join('\n') + `\n\n… (${traceLines.length - 60} líneas más en execution.log)`
+    : rawTrace;
+
+  // Check if rollback ran or was skipped
+  const rollbackStep = result.steps.find(s => s.name.includes('rollback'));
+  const rollbackSkipped = rollbackStep && rollbackStep.status.toLowerCase() !== 'passed';
+  const rollbackNote = rollbackSkipped
+    ? 'rollback no se ejecutó · workspace retenido'
+    : 'rollback ejecutado · workspace retenido para inspección';
 
   return `<div class="failure">
     <div class="failure-head">
       <span class="failure-tag">#${String(idx + 1).padStart(2, '0')} FAILED</span>
       <span class="failure-step">${escapeHtml(step.name)}</span>
-      <span class="failure-reason">${escapeHtml(headline.split('\n')[0].substring(0, 140))}</span>
+      <span class="failure-reason">${escapeHtml(headline)}</span>
     </div>
-    ${trace ? `<pre class="failure-trace">${escapeHtml(trace)}</pre>` : ''}
-    <span class="failure-note">workspace retenido para inspección · nada se envió a remoto</span>
+    ${displayTrace.trim() ? `<pre class="failure-trace">${escapeHtml(displayTrace.trim())}</pre>` : ''}
+    <span class="failure-note">${escapeHtml(rollbackNote)}</span>
   </div>`;
 }
 
@@ -261,7 +280,10 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   let scriptReport = '<div class="empty">Este run no generó reporte de calidad</div>';
   if (scriptReportPath) {
     const embedded = buildEmbeddedScriptReport(scriptReportPath);
-    if (embedded) { scriptReport = `<div class="script-report-frame">${embedded}</div>`; }
+    if (embedded) {
+      const encodedHtml = escapeHtml(embedded);
+      scriptReport = `<div class="script-report-frame"><iframe srcdoc="${encodedHtml}" style="width:100%;min-height:700px;border:none;background:transparent;" sandbox="allow-scripts"></iframe></div>`;
+    }
   }
 
   return `<!DOCTYPE html>
@@ -367,7 +389,7 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   .artifact-size { font-size: 11px; color: #5f6a70; }
 
   /* footer + signature */
-  .foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px 24px; border-top: 1px solid #1a1f24; background: ${C.chrome}; flex-wrap: wrap; }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px 32px 24px; border-top: 1px solid #1a1f24; background: ${C.chrome}; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 10; }
   .foot-meta { font-size: 11px; color: ${C.dim}; }
   .sign { display: flex; align-items: center; gap: 13px; }
   .sign-mark { display: flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; border: 1px solid #2a3036; background: ${C.bg}; font-size: 11px; font-weight: 700; color: ${C.ok}; }
@@ -375,8 +397,8 @@ function buildHtml(result: ValidationResult, scriptReportPath?: string, runDir?:
   .sign-role { font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: ${C.faint}; white-space: nowrap; }
 
   .empty { padding: 60px 32px; text-align: center; color: ${C.faint}; }
-  .script-report-frame { all: initial; display: block; width: 100%; min-height: 400px; font-family: sans-serif; color-scheme: dark; }
-  .script-report-frame * { all: revert; }
+  .script-report-frame { display: block; width: 100%; min-height: 400px; border: none; background: transparent; }
+  .script-report-frame iframe { width: 100%; min-height: 600px; border: none; background: transparent; }
 
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
