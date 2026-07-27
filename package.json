@@ -2,14 +2,19 @@
   "name": "dbflow-validator",
   "displayName": "DBFlow Validator",
   "description": "Zero-config local validation of PostgreSQL database changes before opening a PR",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "juanpa-reyest",
+  "icon": "media/icon.png",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Juanpa-Reyest/dbflow-validator-ide"
+  },
   "engines": {
     "vscode": "^1.85.0"
   },
   "categories": [
-    "Linters"
+    "Testing"
   ],
   "activationEvents": [
     "onCommand:dbflow-validator.validate",
@@ -21,7 +26,10 @@
       {
         "command": "dbflow-validator.validate",
         "title": "DBFlow: Validate DB Changes",
-        "icon": "$(play)"
+        "icon": {
+          "light": "media/play-light.svg",
+          "dark": "media/play-dark.svg"
+        }
       }
     ],
     "keybindings": [
@@ -36,7 +44,7 @@
         {
           "id": "dbflow-validator-sidebar",
           "title": "DBFlow Validator",
-          "icon": "$(database)"
+          "icon": "media/sidebar-icon.svg"
         }
       ]
     },
